@@ -11,7 +11,7 @@ def create_database(home_dir, db_dir, name):
     # add directory titled name under home
     os.mkdir(db_dir + '/' + name)
     wget.download('https://raw.githubusercontent.com/datajoint/mysql-docker/master/docker-compose.yaml',
-                  db_dir + '/' + name + '/docker-compose.yaml')
+                 db_dir + '/' + name + '/docker-compose.yaml')
     os.chdir(home_dir)
 
 def start_database(home_dir, db_dir, name):

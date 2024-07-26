@@ -5,8 +5,13 @@ import datajoint as dj
 import pymysql
 import time
 
+# fix for wget
+# import ssl
+# ssl._create_default_https_context = ssl._create_unverified_context
+
 # import custom functions
 from db_init import create_database, delete_database, start_database, stop_database
+from pop import append_data
 
 app = Flask(__name__)
 CORS(app)
@@ -18,7 +23,7 @@ schema_path: str = 'schema.py'
 # mutable globals (should be saved to a session)
 db_dir: str = None
 db: dj.VirtualModule = None
-user: str = None
+username: str = None
 
 # dj config
 host_address, user, password = '127.0.0.1', 'root', 'simple'
@@ -86,7 +91,7 @@ def start_db():
         except Exception as e:
             return jsonify({"message": f"Error starting database: {e}"}), 400
     else:
-        return jsonify({"message": "Invalid database name!"}),
+        return jsonify({"message": "Invalid database name!"}), 400
 
 @app.route('/init/stop-database', methods=['POST'])
 def stop_db():
@@ -131,19 +136,55 @@ def connect_db():
 
 @app.route('/user/set-user', methods=['POST'])
 def set_user():
-    global user
-    user = request.json.get('user')
-    if user and '/' not in user and user != "user_not_set":
+    global username
+    username = request.json.get('user')
+    if username and '/' not in username and username != "user_not_set":
         return jsonify({"message": "User set successfully!"}), 200
     else:
-        user = None
+        username = None
         return jsonify({"message": "Invalid user name!"}), 400
 
-@app.route('/user/get-user')
+@app.route('/user/get-user', methods=['GET'])
 def get_user():
-    if user:
-        return jsonify({"user": f"{user}"}), 200
+    if username:
+        return jsonify({"user": f"{username}"}), 200
     else:
         return jsonify({"user": "user_not_set"}), 200
     
-# 1.3 
+# 1.3: once the user is set, we can start adding data.
+
+@app.route('/pop/is-empty', methods=['GET'])
+def is_empty():
+    if db:
+        num_experiments = len((db.Experiment & "id>=1").fetch())
+        if num_experiments == 0:
+            return jsonify({"empty": True, "num_experiments": num_experiments}), 200
+        else:
+            return jsonify({"empty": False, "num_experiments": num_experiments}), 200
+    else:
+        return jsonify({"message": "No database connection!"}), 400
+    
+@app.route('/pop/add-data', methods=['POST'])
+def add_data():
+    if db and username:
+        records_added = append_data(request.json.get('data_dir'), request.json.get('meta_dir'),
+                                    request.json.get('tags_dir'), username, db)
+        return jsonify({"message": f"{records_added} records successfully added!"}), 200
+    else:
+        return jsonify({"message": "Connect and sign in first!"}), 400
+
+@app.route('/pop/clear', methods=['POST'])
+def clear():
+    if db and username:
+        try:
+            dj.config["safemode"] = False
+            db.Experiment.delete()
+            db.Protocol.delete()
+            db.Tags.delete()
+            dj.config["safemode"] = True
+            return jsonify({"message": f"Database successfully cleared!"}), 200
+        except:
+            return jsonify({"message": "Error while clearing."}), 400
+    else:
+        return jsonify({"message": "Connect and sign in first!"}), 400
+    
