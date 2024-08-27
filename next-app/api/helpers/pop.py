@@ -1,0 +1,348 @@
+import datajoint as dj
+import json
+import os
+import datetime
+from tqdm import tqdm
+
+Experiment: dj.Manual = None
+Animal: dj.Manual = None
+Preparation: dj.Manual = None
+Cell: dj.Manual = None
+EpochGroup: dj.Manual = None
+EpochBlock: dj.Manual = None
+Epoch: dj.Manual = None
+Response: dj.Manual = None
+Stimulus: dj.Manual = None
+Protocol: dj.Manual = None
+Tags: dj.Manual = None
+
+SortingChunk: dj.Manual = None
+SortedCell: dj.Manual = None
+CellTypeFile: dj.Manual = None
+SortedCellType: dj.Manual = None
+
+NAS_DATA_DIR = '/Volumes/data/data/sorted'
+NAS_ANALYSIS_DIR = '/Volumes/data/analysis'
+
+db: dj.VirtualModule = None
+user: str = None
+
+def fill_tables():
+    if not db:
+        print("ERROR")
+        return
+    global Experiment, Animal, Preparation, Cell, EpochGroup, EpochBlock, Epoch, Response, Stimulus
+    global Protocol, Tags, SortingChunk, SortedCell, CellTypeFile, SortedCellType
+    Experiment = db.Experiment
+    Animal = db.Animal
+    Preparation = db.Preparation
+    Cell = db.Cell
+    EpochGroup = db.EpochGroup
+    EpochBlock = db.EpochBlock
+    Epoch = db.Epoch
+    Response = db.Response
+    Stimulus = db.Stimulus
+
+    Protocol = db.Protocol
+    Tags = db.Tags
+
+    SortingChunk = db.SortingChunk
+    SortedCell = db.SortedCell
+    CellTypeFile = db.CellTypeFile
+    SortedCellType = db.SortedCellType
+
+def max_id(table: dj.Manual) -> int:
+    return dj.U().aggr(table, max=f'max(id)').fetch1('max')
+
+# database populator methods: from analysis
+def append_sorting_files(chunk_id: int, algorithm: str, sorting_dir: str):
+    analysis_dir = os.path.join(NAS_ANALYSIS_DIR, *sorting_dir.split('/')[-3:])
+    # check if real path
+    if not os.path.exists(analysis_dir):
+        # no analysis yet for this chunk
+        return
+    for file in os.listdir(analysis_dir):
+        if file.endswith('.txt'):
+            CellTypeFile.insert1({"chunk_id": chunk_id, "algorithm": algorithm, "file_name": file})
+            file_id = max_id(CellTypeFile)
+            cell_types = []
+            with open(os.path.join(analysis_dir, file)) as f:
+                for line in f:
+                    # each line is cluster_id (two spaces) cell_type
+                    cluster_id, cell_type = line.split()
+                    sorted_cell_id = (SortedCell & f"chunk_id={chunk_id}" & f"algorithm='{algorithm}' " & f"cluster_id={cluster_id}").fetch1()['id']
+                    cell_types.append({"sorted_cell_id": sorted_cell_id, "file_id": file_id, "cell_type": cell_type})
+            SortedCellType.insert(cell_types)
+
+def append_sorting_chunk(experiment_id: int, chunk_name: str, chunk_path: str):
+    SortingChunk.insert1({'experiment_id': experiment_id, 'chunk_name': chunk_name})
+    chunk_id = max_id(SortingChunk)
+    for algorithm in os.listdir(chunk_path):
+        algorithm_dir = os.path.join(chunk_path, algorithm)
+        if 'cluster_group.tsv' not in os.listdir(algorithm_dir):
+            print(f"Could not find cluster_group.tsv in {algorithm_dir}")
+            continue
+        cluster_list = []
+        with open(os.path.join(algorithm_dir, 'cluster_group.tsv')) as f:
+            # tsv where first column is "cluster_id", add each one to the database
+            for line in f:
+                if line.startswith('cluster_id'):
+                    continue
+                cluster_id = int(line.split('\t')[0])
+                ### THIS NEXT LINE IS VERY IMPORTANT: CLUSTER_ID IS ZERO-INDEXED IN THIS ONE LOCATION.
+                ### BUT EVERYWHERE ELSE IT IS ONE-INDEXED BECAUSE MATLAB IS ONE-INDEXED.
+                ### SO HERE WE WILL ADD ONE TO THE CLUSTER_IDS AND USE THAT AS THE SOURCE-OF-TRUTH.
+                cluster_id += 1
+                cluster_list.append({"chunk_id": chunk_id, "algorithm": algorithm, "cluster_id": cluster_id})
+        SortedCell.insert(cluster_list)
+        append_sorting_files(chunk_id, algorithm, algorithm_dir)
+
+def append_experiment_analysis(experiment_id: int, exp_name: str):
+    print(f"Adding analysis for experiment {experiment_id}, {exp_name}")
+    exp_name = (Experiment & f"id={experiment_id}").fetch1()['data_file']
+    if exp_name not in os.listdir(NAS_DATA_DIR):
+        print(f"Could not find data directory for experiment {exp_name}")
+    experiment_dir = os.path.join(NAS_DATA_DIR, exp_name)
+    for file in os.listdir(experiment_dir):
+        if os.path.isdir(os.path.join(experiment_dir, file)) and not file.startswith('data'):
+            append_sorting_chunk(experiment_id, file, os.path.join(experiment_dir, file))
+
+# given a data directory (ending in dataXXX) and the experiment id, find the correct chunk ID.
+def get_block_chunk(experiment_id: int, data_dir: str) -> int:
+    data_index = data_dir.split("/")[1]
+    possible_chunks = (SortingChunk & f"experiment_id={experiment_id}").fetch()['chunk_name']
+    experiment_dir = os.path.join(NAS_DATA_DIR, data_dir.split("/")[0])
+    for chunk_name in possible_chunks:
+        f = os.path.join(experiment_dir, f"{data_dir.split('/')[0]}_{chunk_name}.txt")
+        if not os.path.exists(f):
+            print(f"ERROR: could not find chunk file: {f}")
+            continue
+        with open(f) as file:
+            if data_index in file.read():
+                return (SortingChunk & f"experiment_id={experiment_id}" & f"chunk_name='{chunk_name}'").fetch1()['id']
+    print(f"ERROR: could not find a chunk for this data directory: {data_dir}")
+    return None
+
+# database populator methods
+def append_protocol(protocol_name: str) -> int:
+    if not (Protocol & f"name='{protocol_name}'"):
+        Protocol.insert1({
+            'name': protocol_name
+        })
+    return (Protocol & f"name='{protocol_name}'").fetch1()['protocol_id']
+
+def append_tags(h5_uuid: str, experiment_id: int, table_name: str, table_id: int, user: str, tags_dict: dict):
+    if tags_dict and h5_uuid in tags_dict.keys():
+        if 'tags' in tags_dict[h5_uuid].keys() and user in tags_dict[h5_uuid]['tags'].keys():
+            Tags.insert1({
+                'h5_uuid': h5_uuid,
+                'experiment_id': experiment_id,
+                'table_name': table_name,
+                'table_id': table_id,
+                'user': user,
+                'tag': tags_dict[h5_uuid]['tags'][user]
+            })
+        return tags_dict[h5_uuid]
+    return None
+
+def append_response(epoch_id: int, device_name: str, response: dict, is_mea: bool):
+    Response.insert1({
+        'h5_uuid': response['uuid'],
+        'parent_id': epoch_id,
+        'device_name': device_name,
+        'h5path': response['h5path'] if not is_mea else ''
+    })
+
+def append_stimulus(epoch_id: int, device_name: str, stimulus: dict, is_mea: bool):
+    Stimulus.insert1({
+        'h5_uuid': stimulus['uuid'],
+        'parent_id': epoch_id,
+        'device_name': device_name,
+        'h5path': stimulus['h5path'] if not is_mea else ''
+    })
+
+def append_epoch(experiment_id: int, parent_id: int, epoch: dict, user: str, tags: dict, is_mea: bool):
+    Epoch.insert1({
+        'h5_uuid': epoch['attributes']['uuid'],
+        'experiment_id': experiment_id,
+        'parent_id': parent_id,
+        'properties': epoch['properties'],
+        'parameters': epoch['parameters']
+    })
+    epoch_id = max_id(Epoch)
+    append_tags(epoch['attributes']['uuid'], experiment_id, 'epoch', epoch_id, user, tags)
+    for device_name in epoch['responses'].keys():
+        append_response(epoch_id, device_name, epoch['responses'][device_name], is_mea)
+    for device_name in epoch['stimuli'].keys():
+        append_stimulus(epoch_id, device_name, epoch['stimuli'][device_name], is_mea)
+
+def append_epoch_block(experiment_id: int, parent_id: int, epoch_block: dict, user: str, tags: dict, is_mea: bool):
+    EpochBlock.insert1({
+        'h5_uuid': epoch_block['attributes']['uuid'],
+        'data_dir': epoch_block['dataFile'] if is_mea else '',
+        'experiment_id': experiment_id,
+        'parent_id': parent_id,
+        'protocol_id': append_protocol(epoch_block['protocolID']),
+        'chunk_id': get_block_chunk(experiment_id, epoch_block['dataFile']) if is_mea else ''
+    })
+    epoch_block_id = max_id(EpochBlock)
+    tags = append_tags(epoch_block['attributes']['uuid'], experiment_id, 'epoch_block', epoch_block_id, user, tags)
+    for epoch in epoch_block['epoch']:
+        append_epoch(experiment_id, epoch_block_id, epoch, user, tags, is_mea)
+
+def append_epoch_group(experiment_id: int, parent_id: int, epoch_group: dict, user: str, tags: dict, is_mea: bool):
+    # first, check if every block has the same protocol_id
+    single_protocol = True
+    prev_protocol = None
+    for epoch_block in epoch_group['block']:
+        if prev_protocol == None:
+            prev_protocol = epoch_block['protocolID']
+        elif prev_protocol != epoch_block['protocolID']:
+            single_protocol = False
+            break
+        else:
+            prev_protocol = epoch_block['protocolID']
+    
+    group_tuple = {'h5_uuid': epoch_group['attributes']['uuid'],
+                   'experiment_id': experiment_id,
+                   'parent_id': parent_id,
+                   'label': epoch_group['label'],
+                   'properties': epoch_group['properties']}
+
+    if single_protocol and epoch_group['block']:
+        group_tuple['protocol_id'] = append_protocol(epoch_group['block'][0]['protocolID'])
+
+    EpochGroup.insert1(group_tuple)
+
+    epoch_group_id = max_id(EpochGroup)
+    tags = append_tags(epoch_group['attributes']['uuid'], experiment_id, 'epoch_group', epoch_group_id, user, tags)
+    for epoch_block in epoch_group['block']:
+        append_epoch_block(experiment_id, epoch_group_id, epoch_block, user, tags, is_mea)
+
+def append_cell(experiment_id: int, parent_id: int, cell: dict, user: str, tags: dict, is_mea: bool):
+    Cell.insert1({
+        'h5_uuid': cell['uuid'],
+        'experiment_id': experiment_id,
+        'parent_id': parent_id,
+        'label': cell['label'],
+        'properties': cell['properties']
+    })
+    cell_id = max_id(Cell)
+    tags = append_tags(cell['uuid'], experiment_id, 'cell', cell_id, user, tags)
+    for epoch_group in cell['epoch_groups']:
+        append_epoch_group(experiment_id, cell_id, epoch_group, user, tags, is_mea)
+
+def append_preparation(experiment_id: int, parent_id: int, preparation: dict, user:str, tags: dict, is_mea: bool):
+    Preparation.insert1({
+        'h5_uuid': preparation['uuid'],
+        'experiment_id': experiment_id,
+        'parent_id': parent_id,
+        'label': preparation['label'],
+        'properties': preparation['properties']
+    })
+    preparation_id = max_id(Preparation)
+    tags = append_tags(preparation['uuid'], experiment_id, 'preparation', preparation_id, user, tags)
+    for cell in preparation['cells']:
+        append_cell(experiment_id, preparation_id, cell, user, tags, is_mea)
+
+def append_animal(experiment_id: int, parent_id: int, animal: dict, user: str, tags: dict, is_mea: bool):
+    Animal.insert1({
+        'h5_uuid': animal['uuid'],
+        'experiment_id': experiment_id,
+        'parent_id': parent_id,
+        'label': animal['label'],
+        'properties': animal['properties']
+    })
+    animal_id = max_id(Animal)
+    tags = append_tags(animal['uuid'], experiment_id, 'animal', animal_id, user, tags)
+    for preparation in animal['preparations']:
+        append_preparation(experiment_id, animal_id, preparation, user, tags, is_mea)
+
+def append_experiment(meta: str, data: str, tags: str, meta_dict: dict, user: str, tags_dict: dict):
+    Experiment.insert1({
+        'h5_uuid': meta_dict['uuid'],
+        'meta_file': meta,
+        'data_file': data,
+        'tags_file': tags,
+        'is_mea': 1 if meta_dict['rig_type'] == 'MEA' else 0,
+        'date_added': datetime.datetime.now().date(),
+        'label': meta_dict['label'],
+        'properties': meta_dict['properties']
+    })
+    experiment_id = max_id(Experiment)
+    if meta_dict['rig_type'] == 'MEA':
+        append_experiment_analysis(experiment_id, data)
+    tags_dict = append_tags(meta_dict['uuid'], experiment_id, 'experiment', experiment_id, user, tags_dict)
+    for animal in meta_dict['animals']:
+        append_animal(experiment_id, experiment_id, animal, user, tags_dict,
+                           meta_dict['rig_type'] == 'MEA')
+
+# dummy method for now, will implement later.
+# If there are files to parse, throws error for now.
+def parse_data(source: str, dest: str):
+    if source.endswith('.h5'):
+        print("going to implement this eventually")
+
+def gen_tags(source: str, dest: str):
+    if source.endswith('.h5'):
+        print("going to implement this eventually")
+
+# returns a list of [meta_file, data_file, tag_file] tuples in the directory
+def gen_meta_list(data_dir: str, meta_dir: str, tags_dir: str) -> list:
+    stack = [data_dir]
+    meta_list = []
+
+    while stack:
+        current_dir = stack.pop()
+        for item in os.listdir(current_dir):
+            full_path = os.path.join(current_dir, item)
+            if os.path.isdir(full_path):
+                stack.append(full_path)
+            else:
+                if item.endswith('.h5'):
+                    # check for meta
+                    meta_file = os.path.join(meta_dir, item[:-3] + '.json')
+                    if not os.path.exists(meta_file):
+                        parse_data(full_path, meta_dir)
+                    # check for tags
+                    tags_file = os.path.join(tags_dir, item[:-3] + '.json')
+                    if not os.path.exists(tags_file):
+                        gen_tags(full_path, tags_dir)
+                    meta_list.append([meta_file, full_path, tags_file])
+    # that should be all of the single cell. Now for MEA, we want to find dir in NAS_DATA_DIR
+    for item in os.listdir(meta_dir):
+        if item.endswith('.json') and item[:-5] + '.h5' not in os.listdir(data_dir):
+            # check for tags
+            tags_file = os.path.join(tags_dir, item[:-5] + '.json')
+            if not os.path.exists(tags_file):
+                gen_tags(os.path.join(meta_dir, item), tags_dir)
+            # find the right directory in NAS_DATA_DIR
+            if item[:-5] not in os.listdir(NAS_DATA_DIR):
+                print(f"Could not find data directory for {item}")
+                continue
+            meta_list.append([os.path.join(meta_dir, item), item[:-5], tags_file])
+    return meta_list
+
+# entrance method to generate database from a directory
+def append_data(data_dir: str, meta_dir: str, tags_dir: str, username: str, db_param: dj.VirtualModule):
+    global db
+    global user
+    db = db_param
+    user = username
+    fill_tables()
+
+    meta_list = gen_meta_list(data_dir, meta_dir, tags_dir)
+    records_added = 0
+    for meta, data, tags in tqdm(meta_list):
+        print("Adding", meta, flush=True)
+        # check if meta already in database
+        if len(Experiment & f'meta_file="{meta}"') == 1:
+            continue
+        # not in database, add to database
+        with open(meta, 'r') as f:
+            meta_dict = json.load(f)
+        with open(tags, 'r') as f:
+            tags_dict = json.load(f)
+        append_experiment(meta, data, tags, meta_dict, user, tags_dict)
+        records_added += 1
+    return records_added

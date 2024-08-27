@@ -1,4 +1,5 @@
 import os
+from threading import Thread
 from flask import Flask, session, request, jsonify
 from flask_cors import CORS
 import datajoint as dj
@@ -10,20 +11,27 @@ import time
 # ssl._create_default_https_context = ssl._create_unverified_context
 
 # import custom functions
-from db_init import create_database, delete_database, start_database, stop_database
-from pop import append_data
+from helpers.init import create_database, delete_database, start_database, stop_database
+from helpers.pop import append_data
+from helpers.query import query_levels, table_fields, create_query, generate_tree, get_image_binary
 
 app = Flask(__name__)
 CORS(app)
 
 # immutable globals
 home_dir: str = os.getcwd()
-schema_path: str = 'schema.py'
+schema_path: str = './api/schema.py'
+db_dir: str = "../databases"#"/Users/samarjit/workspace/neuro/samarjit_dj_tool/datajoint/databases"#
 
 # mutable globals (should be saved to a session)
-db_dir: str = None
+mea_dir: str = None
 db: dj.VirtualModule = None
 username: str = None
+query: dj.expression.QueryExpression = None
+
+# progress tracking globals
+add_data_started = False
+add_data_error = None
 
 # dj config
 host_address, user, password = '127.0.0.1', 'root', 'simple'
@@ -31,10 +39,11 @@ dj.config["database.host"] = f"{host_address}"
 dj.config["database.user"] = f"{user}"
 dj.config["database.password"] = f"{password}"
 
-print("Globals populated")
+print("Globals populated", flush=True)
 
 ### 1.1: Set database storage directory, initialize and connect to database
 
+# dir: str -> None
 @app.route('/init/set-database-directory', methods=['POST'])
 def set_db_dir():
     global db_dir
@@ -43,11 +52,23 @@ def set_db_dir():
         return jsonify({"message": "Database directory set successfully!"}), 200
     else:
         return jsonify({"message": "Invalid directory path!"}), 400
-    
+
+# dir: str -> None
+@app.route('/init/set-mea-directory', methods=['POST'])
+def set_mea_dir():
+    global mea_dir
+    mea_dir = request.json.get('dir')
+    if mea_dir and os.path.isdir(mea_dir):
+        return jsonify({"message": "MEA data directory set successfully!"}), 200
+    else:
+        return jsonify({"message": "Invalid directory path!"}), 400
+
+# None -> dir: str
 @app.route('/init/get-database-directory', methods=['GET'])
 def get_db_dir():
     return jsonify({"dir": f"{db_dir}"})
 
+# None -> databases: list
 @app.route('/init/list-databases', methods=['GET'])
 def list_dbs():
     if db_dir:
@@ -56,6 +77,7 @@ def list_dbs():
     else:
         return jsonify({"message": "Database directory not set!"}), 400
 
+# name: str -> None
 @app.route('/init/create-database', methods=['POST'])
 def create_db():
     db_name = request.json.get('name')
@@ -68,6 +90,7 @@ def create_db():
     else:
         return jsonify({"message": "Invalid database name!"}), 400
     
+# name: str -> None
 @app.route('/init/delete-database', methods=['POST'])
 def delete_db():
     db_name = request.json.get('name')
@@ -80,7 +103,8 @@ def delete_db():
             return jsonify({"message": f"Error deleting database: {e}"}), 400
     else:
         return jsonify({"message": "Invalid database name!"}), 400
-    
+
+# name: str -> None
 @app.route('/init/start-database', methods=['POST'])
 def start_db():
     db_name = request.json.get('name')
@@ -93,8 +117,10 @@ def start_db():
     else:
         return jsonify({"message": "Invalid database name!"}), 400
 
+# name: str -> None
 @app.route('/init/stop-database', methods=['POST'])
 def stop_db():
+    global db
     db_name = request.json.get('name')
     if db_name and db_dir:
         try:
@@ -106,6 +132,7 @@ def stop_db():
     else:
         return jsonify({"message": "Invalid database name!"}),
 
+# name: str -> None
 @app.route('/init/connect-database', methods=['POST'])
 def connect_db():
     global db
@@ -121,19 +148,29 @@ def connect_db():
                     time.sleep(1)
             if not dj.conn().is_connected:
                 dj.conn().connect()
-            print('Connected' if dj.conn().is_connected else 'Failed to connect')
+            print('Connected' if dj.conn().is_connected else 'Failed to connect', flush=True)
             if 'schema' not in dj.list_schemas():
                 print('Initializing schema')
                 exec(open(schema_path).read())
             db = dj.VirtualModule('schema.py', 'schema')
             return jsonify({"message": "Connected to database successfully!"}), 200
         except Exception as e:
+            print(f"Error connecting to database: {e}", flush=True)
             return jsonify({"message": f"Error connecting to database: {e}"}), 400
     else:
         return jsonify({"message": "Invalid database name!"}), 400
-    
+
+# None -> connected: bool
+@app.route('/init/is-connected', methods=['GET'])
+def is_connected():
+    if db:
+        return jsonify({"connected": True}), 200
+    else:
+        return jsonify({"connected": False}), 200
+
 # 1.2: Setting user, should be a connection 'db' at this point. 
 
+# user: str -> None
 @app.route('/user/set-user', methods=['POST'])
 def set_user():
     global username
@@ -144,15 +181,17 @@ def set_user():
         username = None
         return jsonify({"message": "Invalid user name!"}), 400
 
+# None -> user: str
 @app.route('/user/get-user', methods=['GET'])
 def get_user():
     if username:
         return jsonify({"user": f"{username}"}), 200
     else:
         return jsonify({"user": "user_not_set"}), 200
-    
+
 # 1.3: once the user is set, we can start adding data.
 
+# None -> empty: bool, num_experiments: int
 @app.route('/pop/is-empty', methods=['GET'])
 def is_empty():
     if db:
@@ -163,16 +202,43 @@ def is_empty():
             return jsonify({"empty": False, "num_experiments": num_experiments}), 200
     else:
         return jsonify({"message": "No database connection!"}), 400
-    
+
+def add_data_thread(data_dir, meta_dir, tags_dir, username, db):
+    global add_data_started
+    global add_data_error
+    add_data_started = True
+    try:
+        append_data(data_dir, meta_dir, tags_dir, username, db)
+    except Exception as e:
+        print(f"Error adding to database: {e}", flush=True)
+        add_data_started = False
+    add_data_started = False
+
+# data_dir: str, meta_dir: str, tags_dir: str -> None
 @app.route('/pop/add-data', methods=['POST'])
 def add_data():
     if db and username:
-        records_added = append_data(request.json.get('data_dir'), request.json.get('meta_dir'),
-                                    request.json.get('tags_dir'), username, db)
-        return jsonify({"message": f"{records_added} records successfully added!"}), 200
+        if add_data_started:
+            return jsonify({"message": "Data addition already in progress!"}), 400
+        else:
+            try:
+                Thread(target=add_data_thread, args=(request.json.get('data_dir'), request.json.get('meta_dir'),
+                                            request.json.get('tags_dir'), username, db)).start()
+                return jsonify({"message": "Successfully started adding data! This can take a while."}), 200
+            except Exception as e:
+                print(f"Error adding to database: {e}", flush=True)
+                return jsonify({"message": f"Error adding to database: {e}"}), 400
     else:
         return jsonify({"message": "Connect and sign in first!"}), 400
 
+# None -> adding: bool
+@app.route('/pop/is-adding', methods=['GET'])
+def is_adding():
+    if add_data_error:
+        return jsonify({"message": add_data_error}), 400
+    return jsonify({"adding": add_data_started}), 200
+
+# None -> None
 @app.route('/pop/clear', methods=['POST'])
 def clear():
     if db and username:
@@ -188,3 +254,56 @@ def clear():
     else:
         return jsonify({"message": "Connect and sign in first!"}), 400
     
+### 2.1: Querying: First we need methods to help create the query.
+
+@app.route('/query/get-query-levels', methods=['GET'])
+def get_query_levels():
+    if db:
+        return jsonify({"levels": query_levels()}), 200
+    else:
+        return jsonify({"message": "No database connection!"}), 400
+
+# table: str -> fields: list
+@app.route('/query/get-table-fields', methods=['POST'])
+def get_table_fields():
+    if db and username:
+        return jsonify({"fields": table_fields(request.json.get('table_name'), username, db)}), 200
+    else:
+        return jsonify({"message": "No database connection!"}), 400
+
+# 2.2: Now we can actually execute the query!    
+
+# query_obj: dict -> results: list
+@app.route('/query/execute-query', methods=['POST'])
+def execute_query():
+    if db and username:
+        global query
+        try:
+            query = create_query(request.json.get('query_obj'), username, db)
+            if query is not None:
+                if len(query) > 0:
+                    print(f"{len(query)} results found!")
+                    return jsonify({"results": generate_tree(query)}), 200
+                else:
+                    return jsonify({"message": f"{len(query)} results found!"}), 200
+        except Exception as e:
+            return jsonify({"message": f"Error executing query: {e}"}), 400
+    else:
+        return jsonify({"message": "Connect and sign in first!"}), 400
+    
+# 3: Results methods: you can add your own visualizations here as well
+
+# epoch_id: int, experiment_id: int, level: str -> image: bytes
+@app.route('/results/get-visualization', methods=['POST'])
+def get_visualization():
+    if db and username:
+        if request.json.get('level') == 'epoch':
+            try:
+                image: bytes = get_image_binary(request.json.get('id'), request.json.get('experiment_id'))
+                return jsonify({"image": image}), 200
+            except Exception as e:
+                return jsonify({"message": f"Error fetching visualization: {e}"}), 400
+        else:
+            return jsonify({"message": "No visualizations available yet!"}), 200
+    else:
+        return jsonify({"message": "Connect and sign in first!"}), 400
