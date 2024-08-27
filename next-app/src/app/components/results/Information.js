@@ -8,6 +8,7 @@ class Information extends Component {
     super(props);
     this.state = {
         img: null,
+        id: null,
         epoch_cache: {},
         epoch_queue: [],
         isLoading: false,
@@ -26,8 +27,8 @@ class Information extends Component {
         // Handle success by setting the data in the state
         this.setState({ isLoading: false });
         if (response.data.image) {
-            console.log("received response")
             this.setState({ img: response.data.image });
+            this.setState({ id: this.props.metadata.id });
             let temp_cache = this.state.epoch_cache;
             temp_cache[this.props.metadata.id] = response.data.image;
             this.setState({ epoch_cache: temp_cache });
@@ -39,7 +40,6 @@ class Information extends Component {
                 delete temp_cache[this.state.epoch_queue.shift()];
                 this.setState({ epoch_cache: temp_cache });
             }
-            console.log("finished setting up")
             console.log(this.state.epoch_queue);
             this.setState({ message: null });
         } else {
@@ -66,7 +66,7 @@ class Information extends Component {
     if (prevProps !== this.props) {
         if (this.props.metadata.id in this.state.epoch_cache) {
             this.setState({ img: this.state.epoch_cache[this.props.metadata.id] });
-            console.log('Cache hit');
+            this.setState({ id: this.props.metadata.id });
             let temp_queue = this.state.epoch_queue;
             temp_queue.push(this.props.metadata.id);
             this.setState({ epoch_queue: temp_queue, message: null });
@@ -77,15 +77,15 @@ class Information extends Component {
     }
 
     render() {
-    const { img } = this.state;
+    const { img, id } = this.state;
 
     return (
         <div>
         {this.state.isLoading && <><CircularProgress /><p>Loading from server ...</p></>}
         {!this.state.isLoading && !img && this.state.message && <p>{this.state.message}</p>}
-        {!this.state.isLoading && img &&
+        {!this.state.isLoading && img && id &&
             <div>
-            <p>Trace for Epoch: {this.props.metadata.id}</p>
+            <p>Trace for Epoch: {id}</p>
             <img style = {{ objectFit: 'contain', width: '100%', height: '100%' }}
             src={'data:image/png;base64,' + img} />
             </div>

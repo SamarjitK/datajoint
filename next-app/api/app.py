@@ -300,6 +300,8 @@ def get_visualization():
         if request.json.get('level') == 'epoch':
             try:
                 image: bytes = get_image_binary(request.json.get('id'), request.json.get('experiment_id'))
+                if image is None:
+                    return jsonify({"message": "No visualizations available for this epoch!"}), 200
                 return jsonify({"image": image}), 200
             except Exception as e:
                 return jsonify({"message": f"Error fetching visualization: {e}"}), 400

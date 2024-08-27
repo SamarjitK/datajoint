@@ -148,8 +148,10 @@ def generate_tree(query: dj.expression.QueryExpression, cur_level: int = 0) -> l
 # results methods: going to keep them here for now for simplicity
 
 def get_image_binary(epoch_id: int, experiment_id: int) -> bytes:
+    h5_file, is_mea = (Experiment & f'id={experiment_id}').fetch1('data_file', 'is_mea')
+    if is_mea:
+        return None
     h5_path = (Response & f'parent_id={epoch_id}' & "device_name='Amp1'").fetch1('h5path')
-    h5_file = (Experiment & f'id={experiment_id}').fetch1('data_file')
     with h5py.File(h5_file, 'r') as f:
         fig = Figure()
         ax = fig.subplots()
