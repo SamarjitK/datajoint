@@ -2,6 +2,7 @@ import * as React from 'react';
 
 import { styled } from '@mui/material/styles';
 import Chip from '@mui/material/Chip';
+import { CompoundTag } from '@blueprintjs/core';
 import Stack from '@mui/material/Stack';
 import { unstable_useTreeItem2 as useTreeItem2 } from '@mui/x-tree-view/useTreeItem2';
 import {
@@ -51,6 +52,16 @@ const CustomTreeItem = React.forwardRef(function CustomTreeItem(props, ref) {
               <Stack direction="row" spacing={1}>
                 <Chip label={item.level} size="small"/>
                 <div>{label}</div>
+              </Stack>
+              <Stack direction="row" spacing={1}>
+                {
+                  item.tags.map((tag) => {
+                    return <CompoundTag key={tag.tag_id} leftContent={tag.tag}
+                                        round={true}>
+                      {tag.user}
+                    </CompoundTag>
+                  })
+                }
               </Stack>
               </TreeItem2Label>
             </Box>

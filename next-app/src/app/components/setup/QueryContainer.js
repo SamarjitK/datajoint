@@ -28,17 +28,21 @@ class QueryContainer extends Component {
         error: null,
         response: null,
         levels: null,
+        fields: null,
+        tag_fields: null,
         open: false,
         query_obj: {},
         modalOpen: false
     };
     }
 
-    getLevels = () => {
-    axios.get('http://localhost:3000/api/query/get-query-levels')
+    getLevelsAndFields = () => {
+    axios.get('http://localhost:3000/api/query/get-levels-and-fields')
         .then(response => {
         // Handle success by setting the data in the state
         this.setState({ levels: response.data.levels });
+        this.setState({ fields: response.data.fields });
+        this.setState({ tag_fields: response.data.tag_fields });
         })
         .catch(error => {
         // Handle error by setting the error message in the state
@@ -47,7 +51,7 @@ class QueryContainer extends Component {
     }
 
     componentDidMount() {
-        this.getLevels();
+        this.getLevelsAndFields();
     }
     
     handleClose = (event, reason) => {
@@ -79,7 +83,7 @@ class QueryContainer extends Component {
 
 
     render() {
-    const { error, response, open, levels, modalOpen } = this.state;
+    const { error, response, open, levels, fields, tag_fields, modalOpen } = this.state;
 
     return (
         <div>
@@ -116,7 +120,11 @@ class QueryContainer extends Component {
                 {level}
             </AccordionSummary>
             <AccordionDetails>
-                <LogicBlock key={level} table_name={level} onQueryChange={this.handleQueryChange} />
+                <LogicBlock key={level} 
+                table_name={level}
+                fields={fields[level]} 
+                tag_fields={tag_fields}
+                onQueryChange={this.handleQueryChange} />
             </AccordionDetails>
             </Accordion>
         ))}

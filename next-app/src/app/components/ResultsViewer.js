@@ -8,7 +8,7 @@ import Information from './results/Information';
 
 
 export default function ResultsViewer(props){
-  const [selectedItem, setSelectedItem] = React.useState(null);
+  const [focusedItem, setFocusedItem] = React.useState(null);
   const [level, setLevel] = React.useState(null);
 
     const results = props.results != null ? props.results : null
@@ -223,7 +223,7 @@ export default function ResultsViewer(props){
     //   ];
 
     const displayInfo = (metadata, level) => {
-        setSelectedItem(metadata);
+        setFocusedItem(metadata);
         setLevel(level);
     }
 
@@ -238,14 +238,14 @@ export default function ResultsViewer(props){
             <div style={{ height: "55%", overflow: "auto",
                 borderRadius: "1%", backgroundColor: "darkgrey",
                  margin: "0% 1% 3% 0%" }}>
-                {!selectedItem ? <div>Click on a valid item in the tree to view visualizations</div> :
-                <Information metadata={selectedItem} level={level} />}
+                {!focusedItem ? <div>Click on a valid item in the tree to view visualizations</div> :
+                <Information metadata={focusedItem} level={level} />}
             </div>
             <div style={{ height: "43%", overflow: "auto",
                 borderRadius: "1%", backgroundColor: "#1e1e1e", 
                 margin: "3% 1% 1% 0%"}}>
-                {selectedItem != null && 
-                <ReactJson style={{margin: "3%"}} theme={'twilight'} src={selectedItem} collapsed="true" />}
+                {focusedItem != null && 
+                <ReactJson style={{margin: "3%"}} theme={'twilight'} src={focusedItem} collapsed="true" />}
             </div>
         </div>
     </div>

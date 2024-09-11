@@ -147,11 +147,19 @@ def generate_tree(query: dj.expression.QueryExpression, cur_level: int = 0) -> l
 
 # results methods: going to keep them here for now for simplicity
 
-def get_image_binary(epoch_id: int, experiment_id: int) -> bytes:
+def get_device_data(epoch_id: int, experiment_id: int) -> dict:
     h5_file, is_mea = (Experiment & f'id={experiment_id}').fetch1('data_file', 'is_mea')
     if is_mea:
         return None
-    h5_path = (Response & f'parent_id={epoch_id}' & "device_name='Amp1'").fetch1('h5path')
+    responses = []
+    for item in (Response & f'parent_id={epoch_id}').fetch(as_dict=True):
+        responses.append({'device_name': item['device_name'], 'h5_path': item['h5path']})
+    stimuli = []
+    for item in (Stimulus & f'parent_id={epoch_id}').fetch(as_dict=True):
+        stimuli.append({'device_name': item['device_name'], 'h5_path': item['h5path']})
+    return {'responses': responses, 'stimuli': stimuli, 'h5_file': h5_file}
+
+def get_image_binary(h5_file: str, h5_path: str) -> bytes:
     with h5py.File(h5_file, 'r') as f:
         fig = Figure()
         ax = fig.subplots()
@@ -159,4 +167,26 @@ def get_image_binary(epoch_id: int, experiment_id: int) -> bytes:
         buf = BytesIO()
         fig.savefig(buf, format='png')
         data = base64.b64encode(buf.getbuffer()).decode("ascii")
-        return data
+    return data
+
+def add_tags(ids: list, tag: str):
+    rows = []
+    for id in ids:
+        experiment_id, table_name, table_id = id.split('-')
+        rows.append({'h5_uuid': (table_dict[table_name] & f"id={table_id}").fetch1()['h5_uuid'],
+                     'experiment_id': experiment_id,
+                     'table_name': table_name,
+                     'table_id': table_id,
+                     'user': user,
+                     'tag': tag})
+    print("Tags table:")
+    Tags.insert(rows)
+    print(Tags.fetch(), flush=True)
+
+def delete_tags(ids: list, tag: str):
+    for id in ids:
+        experiment_id, table_name, table_id = id.split('-')
+        (Tags & f"experiment_id='{experiment_id}'" & f"table_name='{table_name}'" & f"table_id={table_id}" 
+         & f"tag='{tag}'").delete(safemode=False)
+    print("Tags table:")
+    print(Tags.fetch(), flush=True)

@@ -2,6 +2,7 @@ import React, { Component } from 'react';
 import axios from 'axios';
 
 import { Alert, Snackbar, CircularProgress} from '@mui/material';
+import { ButtonGroup, Button } from '@blueprintjs/core';
 import CondBlock from './CondBlock';
 
 class LogicBlock extends Component {
@@ -71,6 +72,7 @@ class LogicBlock extends Component {
 
     render() {
     const { error, response, open, logic_op, criteria_list} = this.state;
+    const { fields, tag_fields } = this.props;
 
     return (
         <div>
@@ -122,6 +124,8 @@ class LogicBlock extends Component {
                         <LogicBlock
                             key={index}
                             table_name={this.props.table_name}
+                            fields={fields}
+                            tag_fields={tag_fields}
                             onDelete={handleDelete}
                             onQueryChange={handleQueryChange}
                         />
@@ -129,6 +133,8 @@ class LogicBlock extends Component {
                         <CondBlock
                             key={index}
                             table_name={this.props.table_name}
+                            fields={fields}
+                            tag_fields={tag_fields}
                             onDelete={handleDelete}
                             onQueryChange={handleQueryChange}
                         />
@@ -137,11 +143,14 @@ class LogicBlock extends Component {
             );
         })}
         </div>
-        <div> 
-            <button onClick={this.handleAddLogic}>Add logical block</button>
-            <button onClick={this.handleAddCond}>Add condition</button>
-            <button onClick={this.props.onDelete}>Delete</button>
-        </div>
+        <ButtonGroup outlined={true}>
+            <Button icon="plus" small={true} intent='primary'
+            onClick={this.handleAddLogic}>logical block</Button>
+            <Button icon="plus" small={true} intent='primary'
+            onClick={this.handleAddCond} >condition</Button>
+            <Button icon="trash" small={true} intent='danger'
+            onClick={this.props.onDelete} >delete</Button>
+        </ButtonGroup>
         {/* {isLoading ? <CircularProgress /> : null} */}
         </div>
         </div>

@@ -13,7 +13,8 @@ import time
 # import custom functions
 from helpers.init import create_database, delete_database, start_database, stop_database
 from helpers.pop import append_data
-from helpers.query import query_levels, table_fields, create_query, generate_tree, get_image_binary
+from helpers.query import query_levels, table_fields, create_query, generate_tree
+from helpers.query import get_device_data, get_image_binary, add_tags, delete_tags
 
 app = Flask(__name__)
 CORS(app)
@@ -26,7 +27,7 @@ db_dir: str = "../databases"#"/Users/samarjit/workspace/neuro/samarjit_dj_tool/d
 # mutable globals (should be saved to a session)
 mea_dir: str = None
 db: dj.VirtualModule = None
-username: str = None
+username: str = "guest"
 query: dj.expression.QueryExpression = None
 
 # progress tracking globals
@@ -271,6 +272,18 @@ def get_table_fields():
     else:
         return jsonify({"message": "No database connection!"}), 400
 
+# All in one method (to replace the above two)
+# None -> levels: list, fields: dict, tag_fields: list
+@app.route('/query/get-levels-and-fields', methods=['GET'])
+def get_levels_and_fields():
+    if db and username:
+        levels = query_levels()
+        fields = {level: table_fields(level, username, db) for level in levels}
+        tag_fields = table_fields('tags', username, db)
+        return jsonify({"levels": levels, "fields": fields, "tag_fields": tag_fields}), 200
+    else:
+        return jsonify({"message": "No database connection!"}), 400
+
 # 2.2: Now we can actually execute the query!    
 
 # query_obj: dict -> results: list
@@ -293,19 +306,77 @@ def execute_query():
     
 # 3: Results methods: you can add your own visualizations here as well
 
-# epoch_id: int, experiment_id: int, level: str -> image: bytes
-@app.route('/results/get-visualization', methods=['POST'])
-def get_visualization():
+# id: int, experiment_id: int, level: str
+# -> data: dict[responses: list, stimuli: list, h5_file: str]
+@app.route('/results/get-visualization-data', methods=['POST'])
+def get_visualization_data():
     if db and username:
         if request.json.get('level') == 'epoch':
             try:
-                image: bytes = get_image_binary(request.json.get('id'), request.json.get('experiment_id'))
-                if image is None:
+                data: dict = get_device_data(request.json.get('id'), request.json.get('experiment_id'))
+                if data is None:
                     return jsonify({"message": "No visualizations available for this epoch!"}), 200
-                return jsonify({"image": image}), 200
+                return jsonify({"data": data}), 200
             except Exception as e:
                 return jsonify({"message": f"Error fetching visualization: {e}"}), 400
         else:
             return jsonify({"message": "No visualizations available yet!"}), 200
+    else:
+        return jsonify({"message": "Connect and sign in first!"}), 400
+
+# h5_file: str, h5_path: str -> image: bytes
+@app.route('/results/get-visualization', methods=['POST'])
+def get_visualization():
+    if db and username:
+        try:
+            image: bytes = get_image_binary(request.json.get('h5_file'), request.json.get('h5_path'))
+            return jsonify({"image": image}), 200
+        except Exception as e:
+            return jsonify({"message": f"Error fetching visualization: {e}"}), 400
+    else:
+        return jsonify({"message": "Connect and sign in first!"}), 400
+
+# epoch_id: int, experiment_id: int, level: str -> image: bytes
+# @app.route('/results/get-visualization', methods=['POST'])
+# def get_visualization():
+#     if db and username:
+#         if request.json.get('level') == 'epoch':
+#             try:
+#                 image: bytes = get_image_binary(request.json.get('id'), request.json.get('experiment_id'))
+#                 if image is None:
+#                     return jsonify({"message": "No visualizations available for this epoch!"}), 200
+#                 return jsonify({"image": image}), 200
+#             except Exception as e:
+#                 return jsonify({"message": f"Error fetching visualization: {e}"}), 400
+#         else:
+#             return jsonify({"message": "No visualizations available yet!"}), 200
+#     else:
+#         return jsonify({"message": "Connect and sign in first!"}), 400
+
+# ids: list ["experiment_id-level-id"], tag: str -> None
+@app.route('/results/add-tags', methods=['POST'])
+def bulk_add_tags():
+    if db and username:
+        try:
+            ids = request.json.get('ids')
+            tag = request.json.get('tag')
+            add_tags(ids, tag)
+            return jsonify({"message": "Tag added successfully!"}), 200
+        except Exception as e:
+            return jsonify({"message": f"Error adding tag: {e}"}), 400
+    else:
+        return jsonify({"message": "Connect and sign in first!"}), 400
+
+# ids: list ["experiment_id-level-id"], tag: str -> None
+@app.route('/results/delete-tags', methods=['POST'])
+def bulk_delete_tags():
+    if db and username:
+        try:
+            ids = request.json.get('ids')
+            tag = request.json.get('tag')
+            delete_tags(ids, tag)
+            return jsonify({"message": "Tag deleted successfully!"}), 200
+        except Exception as e:
+            return jsonify({"message": f"Error deleting tag: {e}"}), 400
     else:
         return jsonify({"message": "Connect and sign in first!"}), 400

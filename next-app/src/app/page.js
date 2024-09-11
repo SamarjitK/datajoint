@@ -1,5 +1,10 @@
 "use client"
 
+// BlueprintJS CSS
+import "normalize.css";
+import "@blueprintjs/core/lib/css/blueprint.css";
+import "@blueprintjs/icons/lib/css/blueprint-icons.css";
+
 import styles from './page.module.css';
 import './globals.css';
 import * as React from 'react';
@@ -17,7 +22,7 @@ export default function Home() {
   return (
     <main>
       <div style={{ display: 'flex', height: '100vh'}}>
-        <div style={{ flex: 1}} className={styles.card}>
+        <div style={{ flex: 1, overflow: 'auto'}} className={styles.card}>
           <SetUpStepper onResultsChange={handleDisplayResults}/>
         </div>
         <div style={{ flex: 2}} className={styles.card}>

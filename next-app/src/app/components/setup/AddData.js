@@ -2,6 +2,7 @@ import React, { Component } from 'react';
 import axios from 'axios';
 
 import { Alert, Snackbar, CircularProgress} from '@mui/material';
+import { ButtonGroup, Button } from '@blueprintjs/core';
 
 import AddDataSpinner from './AddDataSpinner';
 
@@ -133,8 +134,12 @@ class AddData extends Component {
                     />
                 </div>
             ))}
-            <button type="submit">Add Data</button>
-            <button type="button" onClick={this.handleClear}>Clear Database</button>
+            <ButtonGroup outlined={true}>
+                <Button small={true} icon="add" intent='success'
+                type="submit">Add Data</Button>
+                <Button small={true} icon="trash" intent='danger'
+                onClick={this.handleClear}>Clear Database</Button>
+            </ButtonGroup>
         </form>
         {isLoading ? <CircularProgress /> : null}
         {isRunning ? <AddDataSpinner onDoneLoading={this.handleAddedData} /> : null}
