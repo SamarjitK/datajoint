@@ -2,7 +2,7 @@ import React, { Component } from 'react';
 import axios from 'axios';
 
 import { ButtonGroup, Button, 
-    HTMLSelect, SegmentedControl, Callout,
+    HTMLSelect, SegmentedControl, Callout, Code,
     FormGroup, InputGroup, ControlGroup } from '@blueprintjs/core';
 import { Alert, Snackbar, CircularProgress} from '@mui/material';
 
@@ -110,7 +110,7 @@ class CondBlock extends Component {
     render() {
     const { error, response, open, cond_type, cur_operators,
         field_index, subfield_type, type_set, unsaved_changes} = this.state;
-    const { fields, tag_fields } = this.props;
+    const { fields, tag_fields, table_name } = this.props;
 
     return (
         <div>
@@ -161,6 +161,12 @@ class CondBlock extends Component {
                 <Callout intent="warning">
                     Note: these conditions filter out results with no tags.
                     To filter out results with specific tags, use an overall negation ("None of these are true").
+                </Callout>
+                }
+                {
+                cond_type == "PARAM" && table_name == "epoch_group" &&
+                <Callout intent="primary">
+                    Note: epoch groups not defined by a single protocol are set to <Code>protocol_name="no_group_protocol"</Code>.
                 </Callout>
                 }
                 { field_index && cond_type == "PARAM" && fields[field_index][1] == "json" &&

@@ -7,7 +7,7 @@ readme = "README.md"
 package-mode = false
 
 [tool.poetry.dependencies]
-python = "<3.10"
+python = ">=3.9,<3.10"
 datajoint = "^0.14.1"
 wget = "^3.2"
 h5py = "^3.11.0"
@@ -16,7 +16,6 @@ flask = "^3.0.3"
 flask-cors = "^4.0.1"
 setuptools = "^71.1.0"
 matplotlib = "^3.9.2"
-
 
 [build-system]
 requires = ["poetry-core"]
