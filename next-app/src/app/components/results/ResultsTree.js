@@ -58,13 +58,18 @@ export default function ResultsTree(props){
     }
 
     const updateItems = (results) => {
+        console.log(results);
         let items = [];
         results.forEach((result) => {
             let object = {};
             if (result.level === "experiment") {
                 object['id'] = result.object[0].id + "-" + result.level + "-"  + result.object[0].id;
             } else {
-                object['id'] = result.object[0].experiment_id + "-" + result.level + "-"  + result.object[0].id;
+                if ('experiment_id' in result.object[0]) {
+                    object['id'] = result.object[0].experiment_id + "-" + result.level + "-"  + result.object[0].id;
+                } else {
+                    console.log(result);
+                }
             }
             object['level'] = result.level;
             object['metadata'] = result.object[0];

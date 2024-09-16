@@ -7,7 +7,7 @@ readme = "README.md"
 package-mode = false
 
 [tool.poetry.dependencies]
-python = "3.9.6"
+python = "<3.10"
 datajoint = "^0.14.1"
 wget = "^3.2"
 h5py = "^3.11.0"

@@ -84,7 +84,7 @@ class EpochGroup(dj.Manual):
     h5_uuid: varchar(255)
     -> Experiment.proj(experiment_id='id')
     -> Cell.proj(parent_id='id')
-    -> [nullable] Protocol
+    -> Protocol
     label: varchar(255)
     properties: json
     """

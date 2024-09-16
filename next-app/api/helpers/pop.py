@@ -210,7 +210,10 @@ def append_epoch_group(experiment_id: int, parent_id: int, epoch_group: dict, us
                    'properties': epoch_group['properties']}
 
     if single_protocol and epoch_group['block']:
-        group_tuple['protocol_id'] = append_protocol(epoch_group['block'][0]['protocolID'])
+        protocol_id = append_protocol(epoch_group['block'][0]['protocolID'])
+    else:
+        protocol_id = append_protocol("no_group_protocol")
+    group_tuple['protocol_id'] = protocol_id
 
     EpochGroup.insert1(group_tuple)
 

@@ -141,7 +141,12 @@ def generate_tree(query: dj.expression.QueryExpression, cur_level: int = 0) -> l
                            ).fetch(as_dict=True) if table_arr[cur_level] != 'epoch_group' and table_arr[cur_level] != 'epoch_block' else (
                                (table_dict[table_arr[cur_level]] & f"id={entry}") * Protocol.proj(protocol_name = 'name')).fetch(as_dict=True)
         child['tags'] = (Tags & f'table_name="{table_arr[cur_level]}"' & f'table_id={entry}').proj('user', 'tag').fetch(as_dict=True)
-        child['children'] = generate_tree(query & f"{table_arr[cur_level]}_id={entry}", cur_level + 1)
+        if table_arr[cur_level] == 'epoch':
+            child['children'] = []
+            child['responses'] = (Response & f'parent_id={entry}').fetch(as_dict=True)
+            child['stimuli'] = (Stimulus & f'parent_id={entry}').fetch(as_dict=True)
+        else:
+            child['children'] = generate_tree(query & f"{table_arr[cur_level]}_id={entry}", cur_level + 1)
         children.append(child)
     return children
 

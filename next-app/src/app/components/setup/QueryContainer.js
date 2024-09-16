@@ -2,8 +2,10 @@ import React, { Component } from 'react';
 import axios from 'axios';
 
 import AddIcon from '@mui/icons-material/Add';
+import { Button, Checkbox } from '@blueprintjs/core';
 import { Alert, Snackbar, CircularProgress, 
-    Accordion, AccordionSummary, AccordionDetails} from '@mui/material';
+    Accordion, AccordionSummary, AccordionDetails,
+    FormGroup} from '@mui/material';
 import { Modal, Box } from '@mui/material';
 import ReactJson from '@microlink/react-json-view';
 
@@ -32,8 +34,19 @@ class QueryContainer extends Component {
         tag_fields: null,
         open: false,
         query_obj: {},
+        final_query: {},
+        hideExclude: false,
         modalOpen: false
     };
+    }
+
+    exclude_obj = {
+        "NOT": [{
+            "COND": {
+                type : "TAG",
+                value : "tag='exclude'"
+                }
+        }]
     }
 
     getLevelsAndFields = () => {
@@ -61,6 +74,21 @@ class QueryContainer extends Component {
         this.setState({ open: false });
     }
 
+    handleAfterEffects = (temp_obj, excluded) => {
+        if (excluded) {
+            if ("epoch" in temp_obj) {
+                let inner_obj = temp_obj["epoch"];
+                temp_obj["epoch"] = { "AND":
+                    [inner_obj, this.exclude_obj]
+                 }
+            } else {
+                temp_obj["epoch"] = this.exclude_obj;
+            }
+        }
+        this.setState({ final_query: temp_obj });
+        this.props.onQueryObj(temp_obj);
+    }
+
     handleQueryChange = (query, table_name) => {
         let temp_obj = {};
         if (query == {}) {
@@ -70,7 +98,7 @@ class QueryContainer extends Component {
             temp_obj = { ...this.state.query_obj, [table_name]: query };
         }
         this.setState({ query_obj: temp_obj });
-        this.props.onQueryObj(temp_obj);
+        this.handleAfterEffects(structuredClone(temp_obj), this.state.hideExclude);
     }
 
     handleModalOpen = () => {
@@ -81,9 +109,14 @@ class QueryContainer extends Component {
         this.setState({ modalOpen: false });
     }
 
+    handleExcludeClick = () => {
+        this.handleAfterEffects(structuredClone(this.state.query_obj), !this.state.hideExclude);
+        this.setState({ hideExclude: !this.state.hideExclude});
+    }
 
     render() {
-    const { error, response, open, levels, fields, tag_fields, modalOpen } = this.state;
+    const { error, response, open, 
+        levels, fields, tag_fields, modalOpen, hideExclude } = this.state;
 
     return (
         <div>
@@ -99,13 +132,14 @@ class QueryContainer extends Component {
         </Snackbar>
 
         <Modal
+        style = {{ maxHeight: '60%', overflow: 'scroll' }}
         open={modalOpen}
         onClose={this.handleModalClose}
         aria-labelledby="modal-modal-title"
         aria-describedby="modal-modal-description"
         >
         <Box sx={style}>
-        <ReactJson src={this.state.query_obj} />
+        <ReactJson src={this.state.final_query} />
         </Box>
         </Modal>
 
@@ -128,7 +162,13 @@ class QueryContainer extends Component {
             </AccordionDetails>
             </Accordion>
         ))}
-        <button onClick={this.handleModalOpen}>Peek at QueryObj</button>
+        <FormGroup inline={true}>
+        <Checkbox
+            checked={hideExclude}
+            onChange={this.handleExcludeClick}
+            label='hide excluded'/>
+        <Button onClick={this.handleModalOpen}>Peek at QueryObj</Button>
+        </FormGroup>
         {/* {isLoading ? <CircularProgress /> : null} */}
     </div> : <p>Loading...</p>}
         </div>

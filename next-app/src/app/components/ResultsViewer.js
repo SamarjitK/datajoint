@@ -5,6 +5,7 @@ import axios from 'axios';
 import ReactJson from '@microlink/react-json-view';
 import ResultsTree from './results/ResultsTree';
 import Information from './results/Information';
+import { Button, AnchorButton } from '@blueprintjs/core';
 
 
 export default function ResultsViewer(props){
@@ -229,10 +230,19 @@ export default function ResultsViewer(props){
 
     return (
     <div style={{ display: 'flex', height: '100%'}}>
-        <div style={{ flex: 1, marginRight: "1%", 
+        <div style={{ flex: 1}}>
+            <div style={{ marginRight: "1%", 
             backgroundColor: "darkgray", borderRadius: "1%", padding: "1%",
-            overflowX: "auto", overflowY: "auto"}}>
-            {results && <ResultsTree results={results} onFocus={displayInfo} />}
+            overflowX: "auto", overflowY: "auto", height: '95%' }}>
+                {results && <ResultsTree results={results} onFocus={displayInfo} />}
+            </div>
+            <div style={{ marginRight: "1%", padding: "1%", height: '5%' }}>
+                <AnchorButton href={`data:text/json;charset=utf-8,${encodeURIComponent(
+              JSON.stringify(results, null, '\t')
+            )}`}
+            download="results.json">
+                Download JSON</AnchorButton>
+            </div>
         </div>
         <div style={{ flex: 1, marginLeft: "1%", maxWidth: "48%"}}>
             <div style={{ height: "55%", overflow: "auto",
