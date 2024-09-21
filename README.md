@@ -41,7 +41,7 @@ First, add a database that you want to work with. Each one runs independently, s
 
 ![error message](readme/select_db_error.png)
 
-> If this is the case, first try connecting again, then stop and restart the database and try it again. On subsequent connects this shouldn't be an issue, but retrying connection a couple times shoud work.
+> If this is the case, you may have to wait a couple minutes to connect. This is because it takes a while for Docker to actually connect to the port, depending on how much memory it has allocated, because of some first-time set up steps. You can track this by viewing logs for your container via Docker desktop: set up is not complete until you see the line `mysqld: ready for connections.`
 
 Once connected, you can set a user. This is used for tagging. If you don't want to type this in every time, you can set a default by changing `username: str = "guest"` in `api/app.py` to your desired username.
 
@@ -53,7 +53,7 @@ For example, if using the testbed:
 
 - data: `/Volumes/data/datajoint_testbed/data`
 - meta: `/Volumes/data/datajoint_testbed/meta`
-- tags: `/Volumes/data/datajoint_testbed/data`
+- tags: `/Volumes/data/datajoint_testbed/tags`
 
 If using your own directories, this is what each one should consist of (make sure that each experiment shares a file name across the three directories):
 
@@ -63,7 +63,7 @@ If using your own directories, this is what each one should consist of (make sur
 
 The process of adding data can take a while (upto a minute per experiment). You can view the status of the process in the terminal window.
 
-> `api/helpers/pop.py` currently has harcoded paths for `NAS_DATA_DIR` and `NAS_ANALYSIS_DIR`. If you have MEA data, make sure these paths are accurate to where your data and analysis directories are mounted.
+> `api/helpers/utils.py` currently has harcoded paths for `NAS_DATA_DIR` and `NAS_ANALYSIS_DIR`. If you have MEA data, make sure these paths are accurate to where your data and analysis directories are mounted.
 
 ## 3. Querying data
 
@@ -97,9 +97,12 @@ Additionally, the bottom-right panel shows all metadata that datajoint has for t
 
 > Currently only some metadata is stored in datajoint, more will be added later. You can also edit `schema.py` and `pop.py` to add them yourself, and then create a new database.
 
-The top-right panel will be used for summary visualizations of whatever object was last clicked. Currently, this only works for epochs in *single cell* experiments: it shows you the trace for the epoch's associated devices.
+The top-right panel will be used for summary visualizations of whatever object was last clicked. The visualizations currently supported:
 
-> In the future, the visualization box will give you more options, including creating and importing your own visualizations at various levels, etc.
+* Epoch level: spike traces for each device (single-cell experiments only)
+* Block level: spike distributions calculated by each algorithm (mea only)
+
+> More visualizations will be added in the future, as well as making it easier to add your own via python.
 
 ## 5. Exporting results
 

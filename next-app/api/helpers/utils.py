@@ -1,5 +1,8 @@
 import datajoint as dj
 
+NAS_DATA_DIR = '/Volumes/data/data/sorted'
+NAS_ANALYSIS_DIR = '/Volumes/data/analysis'
+
 def table_dict(Experiment: dj.Manual, Animal: dj.Manual, Preparation: dj.Manual,
                Cell: dj.Manual, EpochGroup: dj.Manual,
                EpochBlock: dj.Manual, Epoch: dj.Manual, 

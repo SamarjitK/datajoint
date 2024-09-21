@@ -7,40 +7,26 @@ class Information extends Component {
     constructor(props) {
     super(props);
     this.state = {
-        device_options: null,
-        h5_path: null,
+        options: null,
+        cur_option: null,
         img: null,
-        selected: "responses-0",
+        selected: null,
         id: null,
-        epoch_cache: {},
-        epoch_queue: [],
         isLoading: false,
         message: null
     };
     }
 
-    fetchImage = (file, path) => {
+    fetchImage = (cur_option) => {
     this.setState({ isLoading: true });
     axios.post('http://localhost:3000/api/results/get-visualization', {
-        h5_file: file,
-        h5_path: path
+        data: cur_option
     })
         .then(response => {
         // Handle success by setting the data in the state
         this.setState({ isLoading: false });
         if (response.data.image) {
             this.setState({ img: response.data.image });
-            let temp_cache = this.state.epoch_cache;
-            temp_cache[this.state.h5_path] = response.data.image;
-            this.setState({ epoch_cache: temp_cache });
-            let temp_queue = this.state.epoch_queue;
-            temp_queue.push(this.state.h5_path);
-            this.setState({ epoch_queue: temp_queue });
-            if (this.state.epoch_queue.length > 10) {
-                let temp_cache = this.state.epoch_cache;
-                delete temp_cache[this.state.epoch_queue.shift()];
-                this.setState({ epoch_cache: temp_cache });
-            }
             this.setState({ message: null });
         } else {
             this.setState({ message: response.data.message });
@@ -65,14 +51,23 @@ class Information extends Component {
         .then(response => {
         // Handle success by setting the data in the state
         this.setState({ isLoading: false });
-        if (response.data.data != null) {
-            let table = this.state.selected.split('-')[0];
-            let index = parseInt(this.state.selected.split('-')[1]);
-            this.setState({ h5_path: 
-                response.data.data[table][index].h5_path })
-            this.fetchImage(response.data.data.h5_file, 
-                response.data.data[table][index].h5_path)
-            this.setState({ device_options: response.data.data });
+        if (response.data.options != null) {
+            this.setState({ options: response.data.options });
+            let optgroup = null
+            let index = null;
+            if (this.state.selected == null 
+                || !(this.state.selected.split('-')[0] in response.data.options)
+                || parseInt(this.state.selected.split('-')[1]) >= response.data.options[
+                    (this.state.selected.split('-')[0])].length) {
+                optgroup = Object.keys(response.data.options)[0];
+                index = 0;
+                this.setState({ selected: optgroup + '-' + index });
+            } else {
+                optgroup = this.state.selected.split('-')[0];
+                index = parseInt(this.state.selected.split('-')[1]);
+            }
+            this.setState({ cur_option: response.data.options[optgroup][index] });
+            this.fetchImage(response.data.options[optgroup][index]);
         } else {
             this.setState({ message: response.data.message });
         }
@@ -86,56 +81,61 @@ class Information extends Component {
 
     componentDidMount() {
         if (this.props.metadata){
-            console.log("mounted, fetching options:")
             this.fetchOptions();
         } else {
-            this.setState({ device_options: null });
+            this.setState({ options: null });
         }
     }
 
     handleOptionChange = (event) => {
         this.setState({ selected: event.target.value });
-        let table = event.target.value.split('-')[0];
+        let optgroup = event.target.value.split('-')[0];
         let index = parseInt(event.target.value.split('-')[1]);
-        console.log("option change: " + table + " " + index);
-        this.setState({ h5_path: 
-            this.state.device_options[table][index].h5_path })
-        this.fetchImage(this.state.device_options.h5_file, 
-            this.state.device_options[table][index].h5_path);
+        // console.log("option change: " + optgroup + " " + index);
+        this.setState({ cur_option: this.state.options[optgroup][index] });
+        this.fetchImage(this.state.options[optgroup][index]);
     }
 
     componentDidUpdate(prevProps) {
     if (prevProps !== this.props) {
-        console.log("updating, fetching options:")
         if (this.props.metadata){
             this.fetchOptions();
         } else {
-            this.setState({ device_options: null });
+            this.setState({ options: null });
         }
     }
     }
 
     render() {
-    const { img, device_options, selected} = this.state;
+    const { img, options, selected} = this.state;
 
     return (
         <div>
-        {device_options &&
+        {options &&
         <div>
             Select device ({this.props.level} {this.props.metadata.id}):
-            <select onChange={this.handleOptionChange} value={selected} defaultValue={"responses-0"}>
-            <optgroup label='Responses'>
-            {device_options.responses.map((option, index) => (
+            <select onChange={this.handleOptionChange} value={selected}>
+            {Object.keys(options).map((key) => (
+                <optgroup key={key} label={key}>
+                    {options[key].map((option, index) => (
+                        <option key={`${key}-${index}`} value={`${key}-${index}`}>
+                            {option.label}
+                        </option>
+                    ))}
+                </optgroup>
+            ))}
+            {/* <optgroup label='Responses'>
+            {options.responses.map((option, index) => (
                 <option key={"responses-" + index} 
                         value={"responses-" + index}>{option.device_name}</option>
             ))}
             </optgroup>
             <optgroup label='Stimuli'>
-            {device_options.stimuli.map((option, index) => (
+            {options.stimuli.map((option, index) => (
                 <option key={"stimuli-" + index} 
                         value={"stimuli-" + index}>{option.device_name}</option>
             ))}
-            </optgroup>
+            </optgroup> */}
             </select>
         </div>}
         {!this.state.isLoading && img && 

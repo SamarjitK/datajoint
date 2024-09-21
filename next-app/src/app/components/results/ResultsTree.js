@@ -58,7 +58,6 @@ export default function ResultsTree(props){
     }
 
     const updateItems = (results) => {
-        console.log(results);
         let items = [];
         results.forEach((result) => {
             let object = {};

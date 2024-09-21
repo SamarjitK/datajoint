@@ -2,6 +2,7 @@ import datajoint as dj
 import json
 import os
 import datetime
+import helpers.utils
 from tqdm import tqdm
 
 Experiment: dj.Manual = None
@@ -21,8 +22,8 @@ SortedCell: dj.Manual = None
 CellTypeFile: dj.Manual = None
 SortedCellType: dj.Manual = None
 
-NAS_DATA_DIR = '/Volumes/data/data/sorted'
-NAS_ANALYSIS_DIR = '/Volumes/data/analysis'
+NAS_DATA_DIR = helpers.utils.NAS_DATA_DIR
+NAS_ANALYSIS_DIR = helpers.utils.NAS_ANALYSIS_DIR
 
 db: dj.VirtualModule = None
 user: str = None

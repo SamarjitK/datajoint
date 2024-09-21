@@ -14,7 +14,8 @@ import time
 from helpers.init import create_database, delete_database, start_database, stop_database
 from helpers.pop import append_data
 from helpers.query import query_levels, table_fields, create_query, generate_tree
-from helpers.query import get_device_data, get_image_binary, add_tags, delete_tags
+from helpers.query import get_options, get_trace_binary, get_spikehist_binary
+from helpers.query import add_tags, delete_tags
 
 app = Flask(__name__)
 CORS(app)
@@ -307,20 +308,17 @@ def execute_query():
 # 3: Results methods: you can add your own visualizations here as well
 
 # id: int, experiment_id: int, level: str
-# -> data: dict[responses: list, stimuli: list, h5_file: str]
+# -> data: dict[<optgroup>: list[label: str, <...data>], ...]
 @app.route('/results/get-visualization-data', methods=['POST'])
 def get_visualization_data():
     if db and username:
-        if request.json.get('level') == 'epoch':
-            try:
-                data: dict = get_device_data(request.json.get('id'), request.json.get('experiment_id'))
-                if data is None:
-                    return jsonify({"message": "No visualizations available for this epoch!"}), 200
-                return jsonify({"data": data}), 200
-            except Exception as e:
-                return jsonify({"message": f"Error fetching visualization: {e}"}), 400
-        else:
-            return jsonify({"message": "No visualizations available yet!"}), 200
+        try:
+            data: dict = get_options(request.json.get('level'), request.json.get('id'), request.json.get('experiment_id'))
+            if data is None:
+                return jsonify({"message": "No visualizations available yet!"}), 200
+            return jsonify({"options": data}), 200
+        except Exception as e:
+            return jsonify({"message": f"Error fetching visualization: {e}"}), 400
     else:
         return jsonify({"message": "Connect and sign in first!"}), 400
 
@@ -329,7 +327,15 @@ def get_visualization_data():
 def get_visualization():
     if db and username:
         try:
-            image: bytes = get_image_binary(request.json.get('h5_file'), request.json.get('h5_path'))
+            data = request.json.get('data')
+            if data['vis_type'] == 'epoch-singlecell':
+                image: bytes = get_trace_binary(data['h5_file'], data['h5_path'])
+            elif data['vis_type'] == 'epoch_block-mea':
+                image: bytes = get_spikehist_binary(data['data_path'])
+            else:
+                return jsonify({"message": "Visualization type not supported!"}), 400
+            if image is None:
+                return jsonify({"message": "No visualizations available for this option!"}), 200
             return jsonify({"image": image}), 200
         except Exception as e:
             return jsonify({"message": f"Error fetching visualization: {e}"}), 400

@@ -9,6 +9,9 @@ from io import BytesIO
 import h5py
 from matplotlib.figure import Figure
 
+NAS_DATA_DIR = helpers.utils.NAS_DATA_DIR
+NAS_ANALYSIS_DIR = helpers.utils.NAS_ANALYSIS_DIR
+
 Experiment: dj.Manual = None
 Animal: dj.Manual = None
 Preparation: dj.Manual = None
@@ -152,26 +155,71 @@ def generate_tree(query: dj.expression.QueryExpression, cur_level: int = 0) -> l
 
 # results methods: going to keep them here for now for simplicity
 
-def get_device_data(epoch_id: int, experiment_id: int) -> dict:
-    h5_file, is_mea = (Experiment & f'id={experiment_id}').fetch1('data_file', 'is_mea')
-    if is_mea:
-        return None
-    responses = []
-    for item in (Response & f'parent_id={epoch_id}').fetch(as_dict=True):
-        responses.append({'device_name': item['device_name'], 'h5_path': item['h5path']})
-    stimuli = []
-    for item in (Stimulus & f'parent_id={epoch_id}').fetch(as_dict=True):
-        stimuli.append({'device_name': item['device_name'], 'h5_path': item['h5path']})
-    return {'responses': responses, 'stimuli': stimuli, 'h5_file': h5_file}
+def get_options(level:str, id: int, experiment_id: int) -> dict:
+    if level == 'epoch':
+        h5_file, is_mea = (Experiment & f'id={experiment_id}').fetch1('data_file', 'is_mea')
+        if is_mea:
+            return None
+        responses = []
+        for item in (Response & f'parent_id={id}').fetch(as_dict=True):
+            responses.append({'label': item['device_name'], 
+                              'h5_path': item['h5path'],
+                              'h5_file': h5_file,
+                              'vis_type': 'epoch-singlecell'})
+        stimuli = []
+        for item in (Stimulus & f'parent_id={id}').fetch(as_dict=True):
+            stimuli.append({'label': item['device_name'], 
+                              'h5_path': item['h5path'],
+                              'h5_file': h5_file,
+                              'vis_type': 'epoch-singlecell'})
+        return {'responses': responses, 'stimuli': stimuli}
+    elif level == 'epoch_block':
+        is_mea = (Experiment & f'id={experiment_id}').fetch1('is_mea')
+        if not is_mea:
+            return None
+        data_dir = (EpochBlock & f"id={id}").fetch1('data_dir')
+        full_path = os.path.join(NAS_DATA_DIR, data_dir)
+        algorithms = []
+        for algo in os.listdir(full_path):
+            algorithms.append({'label': algo,
+                            'data_path': os.path.join(full_path, algo),
+                            'vis_type': 'epoch_block-mea'})
+        return {'algorithms': algorithms}
+    return None
 
-def get_image_binary(h5_file: str, h5_path: str) -> bytes:
+def get_trace_binary(h5_file: str, h5_path: str) -> bytes:
     with h5py.File(h5_file, 'r') as f:
         fig = Figure()
         ax = fig.subplots()
+        if 'data' not in f[h5_path].keys():
+            return None
         ax.plot(f[h5_path]['data']['quantity'])
         buf = BytesIO()
         fig.savefig(buf, format='png')
         data = base64.b64encode(buf.getbuffer()).decode("ascii")
+    return data
+
+def get_spikehist_binary(base_path: str) -> bytes:
+    cluster_counts = np.bincount(np.load(os.path.join(base_path, 'spike_clusters.npy')).flatten())
+
+    # generate log-spaced bins, from 1 to the maximum number of spikes in a cluster, in 50 steps, and make a histogram
+    bins = np.logspace(0, np.log10(cluster_counts.max()), 50)
+    hist, bin_edges = np.histogram(cluster_counts, bins=bins)
+
+    # plot the histogram: with bars not a line, and well-labeled axes (not just the powers of ten)
+    fig = Figure()
+    ax = fig.subplots()
+    ax.bar(bin_edges[:-1], hist, width=np.diff(bin_edges), edgecolor='black')
+    ax.set_xscale('log')
+    ax.set_xticks([1, 10, 100, 1000, 10000])
+    ax.set_xticklabels(['1', '10', '100', '1000', '10000'])
+    ax.set_xlabel('Number of spikes in cluster')
+    ax.set_ylabel('Number of clusters')
+
+    # send the plot to the browser
+    buf = BytesIO()
+    fig.savefig(buf, format='png')
+    data = base64.b64encode(buf.getbuffer()).decode("ascii")
     return data
 
 def add_tags(ids: list, tag: str):
