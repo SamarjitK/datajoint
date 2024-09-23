@@ -110,7 +110,9 @@ def process_query(query_obj: dict) -> dj.expression.QueryExpression:
         if table in query_obj.keys():
             if table in ['epoch_group', 'epoch_block']:
                 # add protocol if necessary, rename primary key afterwards
-                query = query * table_dict[table] * Protocol.proj(protocol_name = 'name') & apply_conditions(query_obj[table], table)
+                query = query * table_dict[table] * Protocol.proj(protocol_name = 'name')
+                if query_obj[table]:
+                    query = query & apply_conditions(query_obj[table], table)
                 query = query.proj(**{f'{table}_protocol_id':'protocol_id'})
             else:
                 if table != 'experiment':
@@ -200,10 +202,14 @@ def get_trace_binary(h5_file: str, h5_path: str) -> bytes:
     return data
 
 def get_spikehist_binary(base_path: str) -> bytes:
-    cluster_counts = np.bincount(np.load(os.path.join(base_path, 'spike_clusters.npy')).flatten())
+    clusters = np.load(os.path.join(base_path, 'spike_clusters.npy')).flatten()
+    times = np.load(os.path.join(base_path, 'spike_times.npy')).flatten()
+    sample_rate = 20_000
+    cluster_counts = np.divide(np.bincount(clusters),
+                                ((np.max(times) - np.min(times)) / sample_rate))
 
     # generate log-spaced bins, from 1 to the maximum number of spikes in a cluster, in 50 steps, and make a histogram
-    bins = np.logspace(0, np.log10(cluster_counts.max()), 50)
+    bins = np.logspace(0, np.log10(cluster_counts.max()), 30)
     hist, bin_edges = np.histogram(cluster_counts, bins=bins)
 
     # plot the histogram: with bars not a line, and well-labeled axes (not just the powers of ten)
@@ -211,9 +217,9 @@ def get_spikehist_binary(base_path: str) -> bytes:
     ax = fig.subplots()
     ax.bar(bin_edges[:-1], hist, width=np.diff(bin_edges), edgecolor='black')
     ax.set_xscale('log')
-    ax.set_xticks([1, 10, 100, 1000, 10000])
-    ax.set_xticklabels(['1', '10', '100', '1000', '10000'])
-    ax.set_xlabel('Number of spikes in cluster')
+    ticks = [(10 ** i) for i in range(int(np.log10(cluster_counts.max())) + 2)]
+    ax.set_xticks(ticks, [str(i) for i in ticks])
+    ax.set_xlabel('Avg. spikes per second in cluster')
     ax.set_ylabel('Number of clusters')
 
     # send the plot to the browser

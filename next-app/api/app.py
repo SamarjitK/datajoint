@@ -296,7 +296,6 @@ def execute_query():
             query = create_query(request.json.get('query_obj'), username, db)
             if query is not None:
                 if len(query) > 0:
-                    print(f"{len(query)} results found!")
                     return jsonify({"results": generate_tree(query)}), 200
                 else:
                     return jsonify({"message": f"{len(query)} results found!"}), 200
