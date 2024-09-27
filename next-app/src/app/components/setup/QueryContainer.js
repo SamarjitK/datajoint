@@ -37,6 +37,7 @@ class QueryContainer extends Component {
         open: false,
         query_obj: {},
         final_query: {},
+        exclude_levels: [],
         hideExclude: false,
         modalOpen: false
     };
@@ -111,6 +112,23 @@ class QueryContainer extends Component {
         this.setState({ modalOpen: false });
     }
 
+    handleLevelSelect = (event) => {
+        if (event.target.checked) {
+            if (this.state.exclude_levels.includes(event.target.value)) {
+                let temp_list = this.state.exclude_levels.filter(e => e !== event.target.value);
+                this.props.onExcludeChange(temp_list);
+                this.setState({ exclude_levels: temp_list });
+            }
+        } else {
+            if (!(this.state.exclude_levels.includes(event.target.value))) {
+                let temp_list = this.state.exclude_levels;
+                temp_list.push(event.target.value);
+                this.props.onExcludeChange(temp_list);
+                this.setState({ exclude_levels: temp_list });
+            }
+        }
+    }
+
     handleExcludeClick = () => {
         this.handleAfterEffects(structuredClone(this.state.query_obj), !this.state.hideExclude);
         this.setState({ hideExclude: !this.state.hideExclude});
@@ -152,7 +170,7 @@ class QueryContainer extends Component {
             '& .MuiAccordionDetails-root': {padding: "1%"},
         }}>
             <AccordionSummary expandIcon={<AddIcon />} style={{ minHeight: "0" }}>
-                {level}
+                <Checkbox onChange={this.handleLevelSelect} label={level} value={level} defaultChecked={true} />
             </AccordionSummary>
             <AccordionDetails>
                 <LogicBlock key={level} 

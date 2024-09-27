@@ -47,6 +47,7 @@ export default function SetUpStepper(props){
   const [user, setUser] = React.useState(false);
   const [cont, setCont] = React.useState(false);
   const [queryObj, setQueryObj] = React.useState(null);
+  const [excludeLevels, setExcludeLevels] = React.useState([]);
   const [response, setResponse] = React.useState(null);
   const [error, setError] = React.useState(null);
   const [open, setOpen] = React.useState(false);
@@ -75,6 +76,10 @@ export default function SetUpStepper(props){
     setCont(status);
   }
 
+  const handleExcludeChange = (levels) => {
+    setExcludeLevels(levels);
+  }
+
   const handleQueryObj = (obj) => {
     console.log(obj);
     if (obj == {}) {
@@ -86,7 +91,10 @@ export default function SetUpStepper(props){
 
   const handleExec = () => {
     setIsLoading(true);
-    axios.post('http://localhost:3000/api/query/execute-query', { query_obj: queryObj })
+    axios.post('http://localhost:3000/api/query/execute-query', { 
+      query_obj: queryObj,
+      exclude_levels: excludeLevels
+     })
         .then(response => {
           setIsLoading(false);
           if (response.data.results) {
@@ -127,7 +135,9 @@ export default function SetUpStepper(props){
               {index === 0 && <SelectDatabase onConnectionStatusChange={handleConnection} />}
               {index === 1 && <SetUser onUserSet={handleUser} />}
               {index === 2 && <AddData onContinue={handleCont} />}
-              {index === 3 && <QueryContainer onQueryObj={handleQueryObj}/>}
+              {index === 3 && <QueryContainer 
+                                onQueryObj={handleQueryObj} 
+                                onExcludeChange={handleExcludeChange}/>}
               {isLoading ? 
               <CircularProgress />
               :

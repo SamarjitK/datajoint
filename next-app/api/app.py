@@ -287,7 +287,7 @@ def get_levels_and_fields():
 
 # 2.2: Now we can actually execute the query!    
 
-# query_obj: dict -> results: list
+# query_obj: dict, exclude_levels: list -> results: list
 @app.route('/query/execute-query', methods=['POST'])
 def execute_query():
     if db and username:
@@ -296,7 +296,7 @@ def execute_query():
             query = create_query(request.json.get('query_obj'), username, db)
             if query is not None:
                 if len(query) > 0:
-                    return jsonify({"results": generate_tree(query)}), 200
+                    return jsonify({"results": generate_tree(query, request.json.get('exclude_levels'))}), 200
                 else:
                     return jsonify({"message": f"{len(query)} results found!"}), 200
         except Exception as e:
