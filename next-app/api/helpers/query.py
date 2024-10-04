@@ -64,7 +64,7 @@ def table_fields(table_name: str, username: str, db_param: dj.VirtualModule) -> 
         return None
     tuples = []
     for field in table.heading.attributes.keys():
-        if table.heading.attributes[field].type == 'date':
+        if table.heading.attributes[field].type == 'timestamp':
             tuples.append((field, 'date'))
         elif table.heading.attributes[field].json:
             tuples.append((field, 'json'))
@@ -254,3 +254,96 @@ def delete_tags(ids: list, tag: str):
          & f"tag='{tag}'").delete(safemode=False)
     print("Tags table:")
     print(Tags.fetch(), flush=True)
+
+# recursive helper method to traverse the database and add tags to dict for user
+def build_tags_dict(cur_id: int, cur_level: int, user: str, old_dict: dict) -> dict:
+    cur_dict = {}
+    tags = []
+    # get old tags for other users
+    if old_dict and 'tags' in old_dict.keys():
+        for index in range(len(old_dict['tags'])):
+            u, t = old_dict['tags'][index]
+            if u != user:
+                tags.append((u, t))
+    # get tags for user
+    table_name = table_arr[cur_level]
+    if len(Tags & f"table_name='{table_name}'" & f"table_id={cur_id}" & f"user='{user}'") > 0: # tags for user
+        for tag in (Tags & f"table_name='{table_name}'" & f"table_id={cur_id}" & f"user='{user}'").fetch('tag'):
+            tags.append((user, tag))
+    if len(tags) > 0:
+        cur_dict['tags'] = tags
+    # get children of current object
+    if table_name != 'epoch':
+        children = (table_dict[table_arr[cur_level+1]] & f"parent_id={cur_id}").fetch()
+        for child in children:
+            cur_dict[child['h5_uuid']] = build_tags_dict(child['id'], cur_level+1, user,
+                                                         old_dict[child['h5_uuid']] if old_dict else None)
+    return cur_dict
+
+# add all tags made by the user to the tags_file, overwriting their previous tags
+def push_tags(experiment_ids: list):
+    for experiment_id in experiment_ids:
+        print(f"tags for experiment {experiment_id}", flush=True)
+        tags_file = (Experiment & f"id={experiment_id}").fetch1('tags_file')
+        h5_uuid = (Experiment & f"id={experiment_id}").fetch1('h5_uuid')
+        print(f"tags file: {tags_file}, h5: {h5_uuid}", flush=True)
+        with open(tags_file, 'r') as f:
+            old_dict = json.load(f)
+        cur_dict = {}
+        cur_dict[h5_uuid] = build_tags_dict(experiment_id, 0, user, old_dict[h5_uuid] if old_dict else None)
+        with open(tags_file, 'w') as f:
+            json.dump(cur_dict, f)
+
+# expects: tags_dict = {h5_uuid: {tags: [(user, tag), ...]}}
+# if user specified, only append tags from other users. if null, append all tags
+def append_tags(h5_uuid: str, experiment_id: int, table_name: str, table_id: int, user_skip: str, tags_dict: dict):
+    if tags_dict and h5_uuid in tags_dict.keys() and 'tags' in tags_dict[h5_uuid].keys():
+        for user, tag in tags_dict[h5_uuid]['tags']:
+            if user_skip and user == user_skip:
+                continue
+            Tags.insert1({
+                'h5_uuid': h5_uuid,
+                'experiment_id': experiment_id,
+                'table_name': table_name,
+                'table_id': table_id,
+                'user': user,
+                'tag': tag
+            })
+        return tags_dict[h5_uuid]
+    return None
+
+def traverse_and_append_tags(experiment_id: int, parent_id: int, cur_level: int, user_skip: str, tags_dict: dict):
+    table_name = table_arr[cur_level]
+    if table_name == 'response' or table_name == 'stimulus':
+        return
+    if table_name == 'experiment':
+        ids = (table_dict[table_name] & f"id={experiment_id}").fetch('id')
+    else:
+        ids = (table_dict[table_name] & f"parent_id={parent_id}").fetch('id')
+    for id in ids:
+        h5_uuid = (table_dict[table_name] & f"id={id}").fetch1('h5_uuid')
+        traverse_and_append_tags(experiment_id, id, cur_level + 1, user_skip,
+                                 append_tags(h5_uuid, experiment_id, table_name, 
+                                             id, user_skip, tags_dict))
+
+# refresh tags from tags_file made by other users, delete old tags from other users
+def pull_tags(experiment_ids: list):
+    for experiment_id in experiment_ids:
+        (Tags & f"experiment_id='{experiment_id}'" & f"user!='{user}'").delete(safemode=False)
+        tags_file = (Experiment & f"id={experiment_id}").fetch1('tags_file')
+        with open(tags_file, 'r') as f:
+            tags = json.load(f)
+        if tags == {}:
+            continue
+        traverse_and_append_tags(experiment_id, experiment_id, 0, user, tags)
+
+# refresh tags from tags_file made by all users, delete old tags from all users
+def reset_tags(experiment_ids: list):
+    for experiment_id in experiment_ids:
+        (Tags & f"experiment_id='{experiment_id}'").delete(safemode=False)
+        tags_file = (Experiment & f"id={experiment_id}").fetch1('tags_file')
+        with open(tags_file, 'r') as f:
+            tags = json.load(f)
+        if tags == {}:
+            continue
+        traverse_and_append_tags(experiment_id, experiment_id, 0, None, tags)

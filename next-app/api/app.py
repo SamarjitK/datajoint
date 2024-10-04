@@ -16,6 +16,7 @@ from helpers.pop import append_data
 from helpers.query import query_levels, table_fields, create_query, generate_tree
 from helpers.query import get_options, get_trace_binary, get_spikehist_binary
 from helpers.query import add_tags, delete_tags
+from helpers.query import push_tags, pull_tags, reset_tags
 
 app = Flask(__name__)
 CORS(app)
@@ -383,5 +384,41 @@ def bulk_delete_tags():
             return jsonify({"message": "Tag deleted successfully!"}), 200
         except Exception as e:
             return jsonify({"message": f"Error deleting tag: {e}"}), 400
+    else:
+        return jsonify({"message": "Connect and sign in first!"}), 400
+
+# experiment_ids: list -> None
+@app.route('/results/push-tags', methods=['POST'])
+def export_push_tags():
+    if db and username:
+        try:
+            push_tags(request.json.get('experiment_ids'))
+            return jsonify({"message": "Tags exported successfully!"}), 200
+        except Exception as e:
+            return jsonify({"message": f"Error exporting tags: {e}"}), 400
+    else:
+        return jsonify({"message": "Connect and sign in first!"}), 400
+    
+# experiment_ids: list -> None
+@app.route('/results/pull-tags', methods=['POST'])
+def import_pull_tags():
+    if db and username:
+        try:
+            pull_tags(request.json.get('experiment_ids'))
+            return jsonify({"message": "Tags imported successfully!"}), 200
+        except Exception as e:
+            return jsonify({"message": f"Error importing tags: {e}"}), 400
+    else:
+        return jsonify({"message": "Connect and sign in first!"}), 400
+    
+# experiment_ids: list -> None
+@app.route('/results/reset-tags', methods=['POST'])
+def import_reset_tags():
+    if db and username:
+        try:
+            reset_tags(request.json.get('experiment_ids'))
+            return jsonify({"message": "Tags reset successfully!"}), 200
+        except Exception as e:
+            return jsonify({"message": f"Error resetting tags: {e}"}), 400
     else:
         return jsonify({"message": "Connect and sign in first!"}), 400

@@ -2,7 +2,7 @@ import datajoint as dj
 import json
 import os
 import datetime
-import helpers.utils
+import helpers.utils as utils
 from tqdm import tqdm
 
 Experiment: dj.Manual = None
@@ -22,8 +22,11 @@ SortedCell: dj.Manual = None
 CellTypeFile: dj.Manual = None
 SortedCellType: dj.Manual = None
 
-NAS_DATA_DIR = helpers.utils.NAS_DATA_DIR
-NAS_ANALYSIS_DIR = helpers.utils.NAS_ANALYSIS_DIR
+NAS_DATA_DIR = utils.NAS_DATA_DIR
+NAS_ANALYSIS_DIR = utils.NAS_ANALYSIS_DIR
+
+fields = utils.fields
+table_dict: dict = None
 
 db: dj.VirtualModule = None
 user: str = None
@@ -34,6 +37,7 @@ def fill_tables():
         return
     global Experiment, Animal, Preparation, Cell, EpochGroup, EpochBlock, Epoch, Response, Stimulus
     global Protocol, Tags, SortingChunk, SortedCell, CellTypeFile, SortedCellType
+    global table_dict
     Experiment = db.Experiment
     Animal = db.Animal
     Preparation = db.Preparation
@@ -52,8 +56,32 @@ def fill_tables():
     CellTypeFile = db.CellTypeFile
     SortedCellType = db.SortedCellType
 
+    table_dict = utils.table_dict(Experiment, Animal, Preparation, Cell, EpochGroup, 
+                                  EpochBlock, Epoch, Response, Stimulus, Tags)
+
 def max_id(table: dj.Manual) -> int:
     return dj.U().aggr(table, max=f'max(id)').fetch1('max')
+
+def build_tuple(base_tuple: dict, level: str, meta: dict) -> dict:
+    for dj_name, meta_name in fields[level]:
+        if meta_name in meta.keys():
+            field_obj = table_dict[level].heading.attributes[dj_name]
+            if field_obj.type == 'timestamp':
+                # currently in string form, example "01/22/2021 09:33:51:729159"
+                base_tuple[dj_name] = datetime.datetime.strptime(
+                    meta[meta_name], '%m/%d/%Y %H:%M:%S:%f')
+            elif field_obj.numeric:
+                if type(meta[meta_name]) == str:
+                    if '.' in meta[meta_name]:
+                        base_tuple[dj_name] = float(meta[meta_name])
+                    else:
+                        base_tuple[dj_name] = int(meta[meta_name])
+                else:
+                    base_tuple[dj_name] = meta[meta_name]
+            else:
+                # must be a string or json object, just assign directly
+                base_tuple[dj_name] = meta[meta_name]
+    return base_tuple
 
 # database populator methods: from analysis
 def append_sorting_files(chunk_id: int, algorithm: str, sorting_dir: str):
@@ -132,27 +160,51 @@ def append_protocol(protocol_name: str) -> int:
         })
     return (Protocol & f"name='{protocol_name}'").fetch1()['protocol_id']
 
-def append_tags(h5_uuid: str, experiment_id: int, table_name: str, table_id: int, user: str, tags_dict: dict):
-    if tags_dict and h5_uuid in tags_dict.keys():
-        if 'tags' in tags_dict[h5_uuid].keys() and user in tags_dict[h5_uuid]['tags'].keys():
+# def append_tags(h5_uuid: str, experiment_id: int, table_name: str, table_id: int, user: str, tags_dict: dict):
+#     if tags_dict and h5_uuid in tags_dict.keys():
+#         if 'tags' in tags_dict[h5_uuid].keys() and user in tags_dict[h5_uuid]['tags'].keys():
+#             Tags.insert1({
+#                 'h5_uuid': h5_uuid,
+#                 'experiment_id': experiment_id,
+#                 'table_name': table_name,
+#                 'table_id': table_id,
+#                 'user': user,
+#                 'tag': tags_dict[h5_uuid]['tags'][user]
+#             })
+#         return tags_dict[h5_uuid]
+#     return None
+
+# expects: tags_dict = {h5_uuid: {tags: [(user, tag), ...]}}
+# if user specified, only append tags from other users. if null, append all tags
+def append_tags(h5_uuid: str, experiment_id: int, table_name: str, table_id: int, user_skip: str, tags_dict: dict):
+    if tags_dict and h5_uuid in tags_dict.keys() and 'tags' in tags_dict[h5_uuid].keys():
+        for user, tag in tags_dict[h5_uuid]['tags']:
+            if user_skip and user == user_skip:
+                continue
             Tags.insert1({
                 'h5_uuid': h5_uuid,
                 'experiment_id': experiment_id,
                 'table_name': table_name,
                 'table_id': table_id,
                 'user': user,
-                'tag': tags_dict[h5_uuid]['tags'][user]
+                'tag': tag
             })
         return tags_dict[h5_uuid]
     return None
 
 def append_response(epoch_id: int, device_name: str, response: dict, is_mea: bool):
-    Response.insert1({
-        'h5_uuid': response['uuid'],
+    # Response.insert1({
+    #     'h5_uuid': response['uuid'],
+    #     'parent_id': epoch_id,
+    #     'device_name': device_name,
+    #     'h5path': response['h5path'] if not is_mea else ''
+    # })
+    base_tuple = {
         'parent_id': epoch_id,
         'device_name': device_name,
         'h5path': response['h5path'] if not is_mea else ''
-    })
+    }
+    Response.insert1(build_tuple(base_tuple, 'response', response))
 
 def append_stimulus(epoch_id: int, device_name: str, stimulus: dict, is_mea: bool):
     Stimulus.insert1({
@@ -163,39 +215,52 @@ def append_stimulus(epoch_id: int, device_name: str, stimulus: dict, is_mea: boo
     })
 
 def append_epoch(experiment_id: int, parent_id: int, epoch: dict, user: str, tags: dict, is_mea: bool):
-    Epoch.insert1({
-        'h5_uuid': epoch['attributes']['uuid'],
+    # Epoch.insert1({
+    #     'h5_uuid': epoch['attributes']['uuid'],
+    #     'experiment_id': experiment_id,
+    #     'parent_id': parent_id,
+    #     'properties': epoch['properties'],
+    #     'parameters': epoch['parameters']
+    # })
+    base_tuple = {
         'experiment_id': experiment_id,
-        'parent_id': parent_id,
-        'properties': epoch['properties'],
-        'parameters': epoch['parameters']
-    })
+        'parent_id': parent_id
+    }
+    Epoch.insert1(build_tuple(base_tuple, 'epoch', epoch))
     epoch_id = max_id(Epoch)
-    append_tags(epoch['attributes']['uuid'], experiment_id, 'epoch', epoch_id, user, tags)
+    append_tags(epoch['attributes']['uuid'], experiment_id, 'epoch', epoch_id, None, tags)
     for device_name in epoch['responses'].keys():
         append_response(epoch_id, device_name, epoch['responses'][device_name], is_mea)
     for device_name in epoch['stimuli'].keys():
         append_stimulus(epoch_id, device_name, epoch['stimuli'][device_name], is_mea)
 
 def append_epoch_block(experiment_id: int, parent_id: int, epoch_block: dict, user: str, tags: dict, is_mea: bool):
-    EpochBlock.insert1({
-        'h5_uuid': epoch_block['attributes']['uuid'],
-        'data_dir': epoch_block['dataFile'] if is_mea else '',
+    # EpochBlock.insert1({
+    #     'h5_uuid': epoch_block['attributes']['uuid'],
+    #     'data_dir': epoch_block['dataFile'] if is_mea else '',
+    #     'experiment_id': experiment_id,
+    #     'parent_id': parent_id,
+    #     'protocol_id': append_protocol(epoch_block['protocolID']),
+    #     'chunk_id': get_block_chunk(experiment_id, epoch_block['dataFile']) if is_mea else ''
+    # })
+    base_tuple = {
         'experiment_id': experiment_id,
         'parent_id': parent_id,
+        'data_dir': epoch_block['dataFile'] if is_mea else '',
         'protocol_id': append_protocol(epoch_block['protocolID']),
         'chunk_id': get_block_chunk(experiment_id, epoch_block['dataFile']) if is_mea else ''
-    })
+    }
+    EpochBlock.insert1(build_tuple(base_tuple, 'epoch_block', epoch_block))
     epoch_block_id = max_id(EpochBlock)
-    tags = append_tags(epoch_block['attributes']['uuid'], experiment_id, 'epoch_block', epoch_block_id, user, tags)
-    for epoch in epoch_block['epoch']:
+    tags = append_tags(epoch_block['attributes']['uuid'], experiment_id, 'epoch_block', epoch_block_id, None, tags)
+    for epoch in epoch_block['epochs']:
         append_epoch(experiment_id, epoch_block_id, epoch, user, tags, is_mea)
 
 def append_epoch_group(experiment_id: int, parent_id: int, epoch_group: dict, user: str, tags: dict, is_mea: bool):
     # first, check if every block has the same protocol_id
     single_protocol = True
     prev_protocol = None
-    for epoch_block in epoch_group['block']:
+    for epoch_block in epoch_group['epoch_blocks']:
         if prev_protocol == None:
             prev_protocol = epoch_block['protocolID']
         elif prev_protocol != epoch_block['protocolID']:
@@ -204,82 +269,99 @@ def append_epoch_group(experiment_id: int, parent_id: int, epoch_group: dict, us
         else:
             prev_protocol = epoch_block['protocolID']
     
-    group_tuple = {'h5_uuid': epoch_group['attributes']['uuid'],
-                   'experiment_id': experiment_id,
-                   'parent_id': parent_id,
-                   'label': epoch_group['label'],
-                   'properties': epoch_group['properties']}
+    base_tuple = {
+        'experiment_id': experiment_id,
+        'parent_id': parent_id
+    }
 
-    if single_protocol and epoch_group['block']:
-        protocol_id = append_protocol(epoch_group['block'][0]['protocolID'])
+    if single_protocol and epoch_group['epoch_blocks']:
+        protocol_id = append_protocol(epoch_group['epoch_blocks'][0]['protocolID'])
     else:
         protocol_id = append_protocol("no_group_protocol")
-    group_tuple['protocol_id'] = protocol_id
+    base_tuple['protocol_id'] = protocol_id
 
-    EpochGroup.insert1(group_tuple)
+    EpochGroup.insert1(build_tuple(base_tuple, 'epoch_group', epoch_group))
 
     epoch_group_id = max_id(EpochGroup)
-    tags = append_tags(epoch_group['attributes']['uuid'], experiment_id, 'epoch_group', epoch_group_id, user, tags)
-    for epoch_block in epoch_group['block']:
+    tags = append_tags(epoch_group['attributes']['uuid'], experiment_id, 'epoch_group', epoch_group_id, None, tags)
+    for epoch_block in epoch_group['epoch_blocks']:
         append_epoch_block(experiment_id, epoch_group_id, epoch_block, user, tags, is_mea)
 
 def append_cell(experiment_id: int, parent_id: int, cell: dict, user: str, tags: dict, is_mea: bool):
-    Cell.insert1({
-        'h5_uuid': cell['uuid'],
+    # Cell.insert1({
+    #     'h5_uuid': cell['uuid'],
+    #     'experiment_id': experiment_id,
+    #     'parent_id': parent_id,
+    #     'label': cell['label'],
+    #     'properties': cell['properties']
+    # })
+    base_tuple = {
         'experiment_id': experiment_id,
         'parent_id': parent_id,
-        'label': cell['label'],
-        'properties': cell['properties']
-    })
+    }
+    Cell.insert1(build_tuple(base_tuple, 'cell', cell))
     cell_id = max_id(Cell)
-    tags = append_tags(cell['uuid'], experiment_id, 'cell', cell_id, user, tags)
+    tags = append_tags(cell['uuid'], experiment_id, 'cell', cell_id, None, tags)
     for epoch_group in cell['epoch_groups']:
         append_epoch_group(experiment_id, cell_id, epoch_group, user, tags, is_mea)
 
 def append_preparation(experiment_id: int, parent_id: int, preparation: dict, user:str, tags: dict, is_mea: bool):
-    Preparation.insert1({
-        'h5_uuid': preparation['uuid'],
+    # Preparation.insert1({
+    #     'h5_uuid': preparation['uuid'],
+    #     'experiment_id': experiment_id,
+    #     'parent_id': parent_id,
+    #     'label': preparation['label'],
+    #     'properties': preparation['properties']
+    # })
+    base_tuple = {
         'experiment_id': experiment_id,
         'parent_id': parent_id,
-        'label': preparation['label'],
-        'properties': preparation['properties']
-    })
+    }
+    Preparation.insert1(build_tuple(base_tuple, 'preparation', preparation))
     preparation_id = max_id(Preparation)
-    tags = append_tags(preparation['uuid'], experiment_id, 'preparation', preparation_id, user, tags)
+    tags = append_tags(preparation['uuid'], experiment_id, 'preparation', preparation_id, None, tags)
     for cell in preparation['cells']:
         append_cell(experiment_id, preparation_id, cell, user, tags, is_mea)
 
 def append_animal(experiment_id: int, parent_id: int, animal: dict, user: str, tags: dict, is_mea: bool):
-    Animal.insert1({
-        'h5_uuid': animal['uuid'],
+    # Animal.insert1({
+    #     'h5_uuid': animal['uuid'],
+    #     'experiment_id': experiment_id,
+    #     'parent_id': parent_id,
+    #     'label': animal['label'],
+    #     'properties': animal['properties']
+    # })
+    base_tuple = {
         'experiment_id': experiment_id,
         'parent_id': parent_id,
-        'label': animal['label'],
-        'properties': animal['properties']
-    })
+    }
+    Animal.insert1(build_tuple(base_tuple, 'animal', animal))
     animal_id = max_id(Animal)
-    tags = append_tags(animal['uuid'], experiment_id, 'animal', animal_id, user, tags)
+    tags = append_tags(animal['uuid'], experiment_id, 'animal', animal_id, None, tags)
     for preparation in animal['preparations']:
         append_preparation(experiment_id, animal_id, preparation, user, tags, is_mea)
 
-def append_experiment(meta: str, data: str, tags: str, meta_dict: dict, user: str, tags_dict: dict):
-    Experiment.insert1({
-        'h5_uuid': meta_dict['uuid'],
+def append_experiment(meta: str, data: str, tags: str, experiment: dict, user: str, tags_dict: dict):
+    base_tuple = {
         'meta_file': meta,
         'data_file': data,
         'tags_file': tags,
-        'is_mea': 1 if meta_dict['rig_type'] == 'MEA' else 0,
-        'date_added': datetime.datetime.now().date(),
-        'label': meta_dict['label'],
-        'properties': meta_dict['properties']
-    })
+        'is_mea': 1 if experiment['rig_type'] == 'MEA' else 0,
+        'date_added': datetime.datetime.now(),
+    }
+    Experiment.insert1(build_tuple(base_tuple, 'experiment', experiment))
+    # Experiment.insert1({
+    #     'h5_uuid': experiment['uuid'],
+    #     'label': experiment['label'],
+    #     'properties': experiment['properties']
+    # })
     experiment_id = max_id(Experiment)
-    if meta_dict['rig_type'] == 'MEA':
+    if experiment['rig_type'] == 'MEA':
         append_experiment_analysis(experiment_id, data)
-    tags_dict = append_tags(meta_dict['uuid'], experiment_id, 'experiment', experiment_id, user, tags_dict)
-    for animal in meta_dict['animals']:
+    tags_dict = append_tags(experiment['uuid'], experiment_id, 'experiment', experiment_id, None, tags_dict)
+    for animal in experiment['animals']:
         append_animal(experiment_id, experiment_id, animal, user, tags_dict,
-                           meta_dict['rig_type'] == 'MEA')
+                           experiment['rig_type'] == 'MEA')
 
 # dummy method for now, will implement later.
 # If there are files to parse, throws error for now.
@@ -287,9 +369,12 @@ def parse_data(source: str, dest: str):
     if source.endswith('.h5'):
         print("going to implement this eventually")
 
-def gen_tags(source: str, dest: str):
-    if source.endswith('.h5'):
-        print("going to implement this eventually")
+def gen_tags(file_to_create: str, dir: str):
+    # file_to_create is the name of the file to create, with the .json extension.
+    # dir is the directory to create the file in.
+    # create an empty '{}' json file in the directory with the given name.
+    with open(os.path.join(dir, file_to_create), 'w') as f:
+        f.write('{}')
 
 # returns a list of [meta_file, data_file, tag_file] tuples in the directory
 def gen_meta_list(data_dir: str, meta_dir: str, tags_dir: str) -> list:
@@ -311,7 +396,7 @@ def gen_meta_list(data_dir: str, meta_dir: str, tags_dir: str) -> list:
                     # check for tags
                     tags_file = os.path.join(tags_dir, item[:-3] + '.json')
                     if not os.path.exists(tags_file):
-                        gen_tags(full_path, tags_dir)
+                        gen_tags(item[:-3] + '.json', tags_dir)
                     meta_list.append([meta_file, full_path, tags_file])
     # that should be all of the single cell. Now for MEA, we want to find dir in NAS_DATA_DIR
     for item in os.listdir(meta_dir):
@@ -319,7 +404,7 @@ def gen_meta_list(data_dir: str, meta_dir: str, tags_dir: str) -> list:
             # check for tags
             tags_file = os.path.join(tags_dir, item[:-5] + '.json')
             if not os.path.exists(tags_file):
-                gen_tags(os.path.join(meta_dir, item), tags_dir)
+                gen_tags(item[:-5] + '.json', tags_dir)
             # find the right directory in NAS_DATA_DIR
             if item[:-5] not in os.listdir(NAS_DATA_DIR):
                 print(f"Could not find data directory for {item}")

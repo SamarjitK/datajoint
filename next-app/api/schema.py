@@ -1,4 +1,5 @@
 import datajoint as dj
+import helpers.utils as utils
 
 dj.config['database.host'] = '127.0.0.1'
 dj.config['database.user'] = 'root'
@@ -22,7 +23,7 @@ class Protocol(dj.Manual):
 
 @schema
 class Experiment(dj.Manual):
-    definition = """
+    definition = f"""
     # experiment metadata, including pointers to files
     id: int auto_increment
     ---
@@ -31,9 +32,17 @@ class Experiment(dj.Manual):
     data_file: varchar(255) # empty if MEA for now, maybe should store "/Volumes/data/data/sorted" here?
     tags_file: varchar(255)
     is_mea: tinyint unsigned # 1 if MEA, 0 if not
-    date_added: date
+    date_added: timestamp
     label: varchar(255)
     properties: json
+    attributes: json
+    start_time = NULL : timestamp
+    experimenter = NULL : varchar(255)
+    institution = NULL : varchar(255)
+    lab = NULL : varchar(255)
+    project = NULL : varchar(255)
+    rig = NULL : varchar(255)
+    rig_type = NULL : varchar(255)
     """
 
 @schema
@@ -47,6 +56,15 @@ class Animal(dj.Manual):
     -> Experiment.proj(parent_id='id')
     label: varchar(255)
     properties: json
+    attributes: json
+    start_time = NULL : timestamp
+    props_id = NULL : varchar(255)
+    description = NULL : varchar(255)
+    sex = NULL : varchar(255)
+    age = NULL : varchar(255)
+    weight = NULL : varchar(255)
+    dark_adaptation = NULL : varchar(255)
+    species = NULL : varchar(255)
     """
 
 @schema
@@ -60,6 +78,12 @@ class Preparation(dj.Manual):
     -> Animal.proj(parent_id='id')
     label: varchar(255)
     properties: json
+    attributes: json
+    start_time = NULL : timestamp
+    bath_solution = NULL : varchar(255)
+    preparation_type = NULL : varchar(255)
+    region = NULL : varchar(255)
+    array_pitch = NULL : varchar(255)
     """
 
 @schema
@@ -73,6 +97,9 @@ class Cell(dj.Manual):
     -> Preparation.proj(parent_id='id')
     label: varchar(255)
     properties: json
+    attributes: json
+    start_time = NULL : timestamp
+    type = NULL : varchar(255)
     """
 
 @schema
@@ -85,8 +112,11 @@ class EpochGroup(dj.Manual):
     -> Experiment.proj(experiment_id='id')
     -> Cell.proj(parent_id='id')
     -> Protocol
-    label: varchar(255)
+    label = NULL : varchar(255)
     properties: json
+    attributes: json
+    start_time = NULL : timestamp
+    end_time = NULL : timestamp
     """
 
 # analysis table
@@ -159,6 +189,13 @@ class EpochBlock(dj.Manual):
     -> EpochGroup.proj(parent_id='id')
     -> Protocol
     -> [nullable] SortingChunk.proj(chunk_id='id')
+    label = NULL : varchar(255)
+    properties: json
+    attributes: json
+    start_time = NULL : timestamp
+    end_time = NULL : timestamp
+    parameters = NULL : json
+    array_pitch = NULL : varchar(255)
     """
 
 @schema
@@ -170,8 +207,12 @@ class Epoch(dj.Manual):
     h5_uuid: varchar(255)
     -> Experiment.proj(experiment_id='id')
     -> EpochBlock.proj(parent_id='id')
+    label = NULL : varchar(255)
     properties: json
-    parameters: json
+    attributes: json
+    start_time = NULL : timestamp
+    end_time = NULL : timestamp
+    parameters = NULL : json
     """
 
 @schema
@@ -184,6 +225,11 @@ class Response(dj.Manual):
     -> Epoch.proj(parent_id='id')
     device_name: varchar(255)
     h5path: varchar(511)
+    label = NULL : varchar(255)
+    sample_rate = NULL : varchar(255)
+    sample_rate_units = NULL : varchar(255)
+    offset_hours = NULL : varchar(255)
+    offset_ticks = NULL : varchar(255)
     """
 
 @schema

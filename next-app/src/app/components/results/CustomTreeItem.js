@@ -50,6 +50,8 @@ const CustomTreeItem = React.forwardRef(function CustomTreeItem(props, ref) {
               <TreeItem2Checkbox {...getCheckboxProps()} />
               <TreeItem2Label {...getLabelProps()} >
               <Stack direction="row" spacing={1}>
+                {item.level == 'experiment' &&
+                  <Chip label={item.metadata.is_mea == 1 ? 'mea' : 'patch'} size="small" color="primary"/>}
                 <Chip label={item.level} size="small"/>
                 <div>{label}</div>
               </Stack>

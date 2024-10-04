@@ -81,6 +81,10 @@ Make sure you click the save button for each condition in case there are unsaved
 
 > Note: in the future you'll be able to paste this in and re-run previous queries.
 
+If you're viewing lots of data, it can take a while for the results to load. To speed this up (or if you just don't want to see certain levels), you can unselect any level using the checkbox next to its name. For example, if you are just trying to find specific experiments, you can unselect all the other levels (queries on hidden levels will still apply).
+
+> Note: if the experiment level is hidden, you will not be able to push/pull tags (since this is done by experiment).
+
 You can add additional filters using the checkboxes (will add more). For example, marking "hide excluded" will hide any epochs with the `exclude` tag. Once you are happy with your query, click View Results to run!
 
 ## 4. Viewing results
@@ -91,11 +95,9 @@ Currently, a query will return a tree of results matching your criteria. You can
 
 Once you type something in the tagging input box, you can select any level(s) to add/remove tags with that name. These tags will be associate with the username you signed in with. You can use the select/unselect/select children options to make this easier.
 
-> Currently, to view changes in tags, you must reclick the "View Results" button in the left panel. Be aware that this may change your results if you filtered by tags in your query!
+> Currently, to view/refresh changes in tags, you must reclick the "View Results" button in the left panel. Be aware that this may change your results if you filtered by tags in your query!
 
 Additionally, the bottom-right panel shows all metadata that datajoint has for the item clicked most recently. You can use this to find more things to query on.
-
-> Currently only some metadata is stored in datajoint, more will be added later. You can also edit `schema.py` and `pop.py` to add them yourself, and then create a new database.
 
 The top-right panel will be used for summary visualizations of whatever object was last clicked. The visualizations currently supported:
 
@@ -104,13 +106,21 @@ The top-right panel will be used for summary visualizations of whatever object w
 
 > More visualizations will be added in the future, as well as making it easier to add your own via python.
 
-## 5. Exporting results
+## 5. Exporting results/tags
 
 The "Download JSON" button does exactly that. The JSON object is a direct representation of the results tree, with the datafile location stored in the topmost `experiment` level, and raw data paths (for single cell experiments) stored as devices under the `epoch` level.
 
-> Note: tags currently save directly to the local database. A button will be added in the future to export them directly to the `/tags` JSON file (so far unused), which allows tags to persist across databases.
-
 > In the future, chunk and analysis data for MEA (which are already in the database!) should also be displayed and be available to export.
+
+When you add/delete tags, these changes are only saved in your current database. If you want to upload the tags you've created, or download new tags someone else has added, these changes must be imported/exported to `/tags/`. There are three options, and they will only apply to experiments that are currently in your results tree:
+
+- Push: exports your changes to `/tags/`. This includes any tags with your username that were deleted/added, but you cannot overwrite tags from other users.
+
+- Pull: import tags made by other users from `/tags/`. This is useful if someone added tags after you created your database, works like a "refresh" button.
+
+- Reset: import tags made by *all* users from `/tags/`. This operation both pulls tags from other users, and overwrites any local changes you made (to your tags) with the last copy you exported.
+
+> Again, these operations apply to all experiments in your current query. If you only want to push/pull/reset for a certain experiment, create a query with only that one. If you want to operate on the entire database, create a query that just returns all experiments, and then use these options.
 
 ## 6. Cleaning up
 
