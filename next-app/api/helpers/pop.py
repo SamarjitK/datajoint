@@ -202,7 +202,7 @@ def append_response(epoch_id: int, device_name: str, response: dict, is_mea: boo
     base_tuple = {
         'parent_id': epoch_id,
         'device_name': device_name,
-        'h5path': response['h5path'] if not is_mea else ''
+        'h5path': response['h5path']
     }
     Response.insert1(build_tuple(base_tuple, 'response', response))
 
@@ -211,7 +211,7 @@ def append_stimulus(epoch_id: int, device_name: str, stimulus: dict, is_mea: boo
         'h5_uuid': stimulus['uuid'],
         'parent_id': epoch_id,
         'device_name': device_name,
-        'h5path': stimulus['h5path'] if not is_mea else ''
+        'h5path': stimulus['h5path']
     })
 
 def append_epoch(experiment_id: int, parent_id: int, epoch: dict, user: str, tags: dict, is_mea: bool):
