@@ -244,15 +244,21 @@ def append_epoch_block(experiment_id: int, parent_id: int, epoch_block: dict, us
     #     'chunk_id': get_block_chunk(experiment_id, epoch_block['dataFile']) if is_mea else ''
     # })
     # Get the chunk_id from the data directory.
+    if is_mea:
+        data_xxx = epoch_block['dataFile'].split('/')[1]
+        exp_name = (Experiment & f"id={experiment_id}").fetch1()['data_file']
+        data_dir = exp_name + '/' + data_xxx + '/'
+    else:
+        data_dir = ''
     try:
-        chunk_id = get_block_chunk(experiment_id, epoch_block['dataFile']) if is_mea else ''
+        chunk_id = get_block_chunk(experiment_id, data_dir) if is_mea else ''
     except Exception as e:
-        print(f"Error getting chunk_id for {experiment_id}, {epoch_block['dataFile']}: {e}")
+        print(f"Error getting chunk_id for {experiment_id}, {data_dir}: {e}")
         chunk_id = ''
     base_tuple = {
         'experiment_id': experiment_id,
         'parent_id': parent_id,
-        'data_dir': epoch_block['dataFile'] if is_mea else '',
+        'data_dir': data_dir, #epoch_block['dataFile'] if is_mea else '',
         'protocol_id': append_protocol(epoch_block['protocolID']),
         'chunk_id': chunk_id #get_block_chunk(experiment_id, epoch_block['dataFile']) if is_mea else ''
     }
