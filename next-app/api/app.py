@@ -14,6 +14,7 @@ import time
 from helpers.init import create_database, delete_database, start_database, stop_database
 from helpers.pop import append_data
 from helpers.query import query_levels, table_fields, create_query, generate_tree
+from helpers.query import get_metadata_helper
 from helpers.query import get_options, get_trace_binary, get_spikehist_binary
 from helpers.query import add_tags, delete_tags
 from helpers.query import push_tags, pull_tags, reset_tags
@@ -293,19 +294,36 @@ def get_levels_and_fields():
 def execute_query():
     if db and username:
         global query
-        try:
-            query = create_query(request.json.get('query_obj'), username, db)
-            if query is not None:
-                if len(query) > 0:
-                    return jsonify({"results": generate_tree(query, request.json.get('exclude_levels'))}), 200
-                else:
-                    return jsonify({"message": f"{len(query)} results found!"}), 200
-        except Exception as e:
-            return jsonify({"message": f"Error executing query: {e}"}), 400
+        # try:
+        print("Querying", flush=True)
+        query = create_query(request.json.get('query_obj'), username, db)
+        print("Constructed query", flush=True)
+        if query is not None:
+            if len(query) > 0:
+                tree = generate_tree(query, request.json.get('exclude_levels'))
+                print("Query executed", flush=True)
+                return jsonify({"results": tree}), 200
+            else:
+                return jsonify({"message": f"{len(query)} results found!"}), 200
+        # except Exception as e:
+        #     return jsonify({"message": f"Error executing query: {e}"}), 400
     else:
         return jsonify({"message": "Connect and sign in first!"}), 400
     
 # 3: Results methods: you can add your own visualizations here as well
+
+@app.route('/results/get-metadata', methods=['POST'])
+def get_metadata():
+    if db and username:
+        try:
+            metadata: dict = get_metadata_helper(request.json.get('level'), request.json.get('id'))
+            if metadata is None:
+                return jsonify({"message": "Metadata not found!"}), 400
+            return jsonify({"metadata": metadata}), 200
+        except Exception as e:
+            return jsonify({"message": f"Error fetching metadata: {e}"}), 400
+    else:
+        return jsonify({"message": "Connect and sign in first!"}), 400
 
 # id: int, experiment_id: int, level: str
 # -> data: dict[<optgroup>: list[label: str, <...data>], ...]

@@ -50,9 +50,14 @@ const CustomTreeItem = React.forwardRef(function CustomTreeItem(props, ref) {
               <TreeItem2Checkbox {...getCheckboxProps()} />
               <TreeItem2Label {...getLabelProps()} >
               <Stack direction="row" spacing={1}>
-                {item.level == 'experiment' &&
-                  <Chip label={item.metadata.is_mea == 1 ? 'mea' : 'patch'} size="small" color="primary"/>}
-                <Chip label={item.level} size="small"/>
+              <Chip label={item.level} size="small"/>
+              {item.level == 'experiment' &&
+                  <Chip label={item.is_mea == 1 ? 'mea' : 'patch'} size="small" color="primary"/>}
+              {(item.level == 'epoch_group' || item.level == 'epoch_block') 
+                && item.protocol && item.protocol != 'no_group_protocol'
+                && <Chip label={item.protocol.split('.').pop()} size="small" color="secondary"/>}
+              </Stack>
+              <Stack direction="row" spacing={1}>
                 <div>{label}</div>
               </Stack>
               <Stack direction="row" spacing={1}>

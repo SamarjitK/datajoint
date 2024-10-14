@@ -64,7 +64,7 @@ def max_id(table: dj.Manual) -> int:
 
 def build_tuple(base_tuple: dict, level: str, meta: dict) -> dict:
     for dj_name, meta_name in fields[level]:
-        if meta_name in meta.keys():
+        if meta_name in meta.keys() and meta[meta_name] is not None:
             field_obj = table_dict[level].heading.attributes[dj_name]
             if field_obj.type == 'timestamp':
                 # currently in string form, example "01/22/2021 09:33:51:729159"

@@ -19,7 +19,7 @@ def start_database(home_dir, db_dir, name):
         print("create database first!")
         return
     os.chdir(db_dir + '/' + name)
-    subprocess.run(['docker-compose', 'up', '-d'])
+    subprocess.run(['docker', 'compose', 'up', '-d'])
     os.chdir(home_dir)
 
 def stop_database(home_dir, db_dir, name, conn: dj.Connection):
@@ -30,7 +30,7 @@ def stop_database(home_dir, db_dir, name, conn: dj.Connection):
         print('Invalid database name')
         return
     os.chdir(db_dir + '/' + name)
-    os.system('docker-compose down')
+    subprocess.run(['docker', 'compose', 'down'])
     os.chdir(home_dir)
 
 def delete_database(home_dir, db_dir, name, conn: dj.Connection):

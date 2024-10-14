@@ -1,6 +1,7 @@
 "use client"
 
-import * as React from 'react';
+import { useState } from 'react';
+// import dynamic from "next/dynamic";
 import axios from 'axios';
 import ReactJson from '@microlink/react-json-view';
 import ResultsTree from './results/ResultsTree';
@@ -9,13 +10,29 @@ import { Button, AnchorButton, ButtonGroup, Popover, Code, Callout } from '@blue
 
 
 export default function ResultsViewer(props){
-  const [focusedItem, setFocusedItem] = React.useState(null);
-  const [level, setLevel] = React.useState(null);
+  const [focusedData, setFocusedData] = useState(null);
+  const [level, setLevel] = useState(null);
+//   const DynamicReactJson = dynamic(import('@microlink/react-json-view').then((mod) => mod.default), { 
+//         ssr: false,
+//         loading: () => <p>Loading...</p>,
+//     });
 
     const results = props.results != null ? props.results : null
 
-    const displayInfo = (metadata, level) => {
-        setFocusedItem(metadata);
+    const getFocusedData = (level, id) => {
+        axios.post('http://localhost:3000/api/results/get-metadata',
+            { level: level, id: id }
+        )
+        .then(response => {
+            setFocusedData(response.data.metadata);
+        })
+        .catch(error => {
+            console.log(error.response.data.message);
+        });
+    }
+
+    const displayInfo = (level, id) => {
+        getFocusedData(level, id);
         setLevel(level);
     }
 
@@ -111,14 +128,14 @@ export default function ResultsViewer(props){
             <div style={{ height: "55%", overflow: "auto",
                 borderRadius: "1%", backgroundColor: "darkgrey",
                  margin: "0% 1% 3% 0%" }}>
-                {!focusedItem ? <div>Click on a valid item in the tree to view visualizations</div> :
-                <Information metadata={focusedItem} level={level} />}
+                {!focusedData ? <div>Click on a valid item in the tree to view visualizations</div> :
+                <Information level={level} id={focusedData.id} experiment_id={focusedData.experiment_id} />}
             </div>
             <div style={{ height: "43%", overflow: "auto",
                 borderRadius: "1%", backgroundColor: "#1e1e1e", 
                 margin: "3% 1% 1% 0%"}}>
-                {focusedItem != null && 
-                <ReactJson style={{margin: "3%"}} theme={'twilight'} src={focusedItem} collapsed="true" />}
+                {focusedData != null &&
+                <ReactJson style={{margin: "3%"}} theme={'twilight'} src={focusedData} collapsed="true" />}
             </div>
         </div>
     </div>

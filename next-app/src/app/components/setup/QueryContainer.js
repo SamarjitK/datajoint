@@ -1,5 +1,6 @@
 import React, { Component } from 'react';
 import axios from 'axios';
+// import dynamic from "next/dynamic";
 
 import AddIcon from '@mui/icons-material/Add';
 import { Button, Checkbox } from '@blueprintjs/core';
@@ -24,6 +25,11 @@ const style = {
     boxShadow: 24,
     p: 4,
   };
+
+//   const DynamicReactJson = dynamic(import('@microlink/react-json-view').then((mod) => mod.default), { 
+//     ssr: false,
+//     loading: () => <p>Loading...</p>,
+// });
 
 class QueryContainer extends Component {
     constructor(props) {
@@ -181,7 +187,7 @@ class QueryContainer extends Component {
             </AccordionDetails>
             </Accordion>
         ))}
-        <FormGroup inline={true}>
+        <FormGroup>
         <Checkbox
             checked={hideExclude}
             onChange={this.handleExcludeClick}
