@@ -173,6 +173,53 @@ def generate_tree(query: dj.expression.QueryExpression,
             children.append(child)
     return children
 
+# Generate the full obejct tree, including responses and stimuli
+def generate_object_tree(query: dj.expression.QueryExpression, 
+                  exclude_levels: list, 
+                  cur_level: int = 0) -> list:
+    """ Generate the full object tree, including responses and stimuli. 
+    Args:
+        query (dj.expression.QueryExpression): The query to execute
+        exclude_levels (list): List of levels to exclude
+        cur_level (int): The current level of the tree
+    Returns:
+        list: The object tree
+    """
+    if cur_level == 7:
+        return []
+    children = []
+    for entry in np.unique(query.fetch(f'{table_arr[cur_level]}_id')):
+        if table_arr[cur_level] in exclude_levels:
+            children.extend(generate_object_tree(query & f"{table_arr[cur_level]}_id={entry}", exclude_levels, cur_level + 1))
+        else:
+            child = {}
+            obj: dict = ((table_dict[table_arr[cur_level]] & f"id={entry}"
+                            ).fetch(as_dict=True) if table_arr[cur_level] != 'epoch_group' and table_arr[cur_level] != 'epoch_block' else (
+                                (table_dict[table_arr[cur_level]] & f"id={entry}") * Protocol.proj(protocol_name = 'name')
+                                ).fetch(as_dict=True))[0]
+            child['level'] = table_arr[cur_level]
+            child['id'] = obj['id']
+            if child['level'] == 'experiment':
+                child['is_mea'] = obj['is_mea']
+            else:
+                child['experiment_id'] = obj['experiment_id']
+            if 'label' in obj.keys():
+                child['label'] = obj['label']
+            if 'protocol_name' in obj.keys():
+                child['protocol'] = obj['protocol_name']
+            child['object'] = (table_dict[table_arr[cur_level]] & f"id={entry}"
+                            ).fetch(as_dict=True) if table_arr[cur_level] != 'epoch_group' and table_arr[cur_level] != 'epoch_block' else (
+                                (table_dict[table_arr[cur_level]] & f"id={entry}") * Protocol.proj(protocol_name = 'name')).fetch(as_dict=True)
+            child['tags'] = (Tags & f'table_name="{table_arr[cur_level]}"' & f'table_id={entry}').proj('user', 'tag').fetch(as_dict=True)
+            if table_arr[cur_level] == 'epoch':
+                child['children'] = []
+                child['responses'] = (Response & f'parent_id={entry}').fetch(as_dict=True)
+                child['stimuli'] = (Stimulus & f'parent_id={entry}').fetch(as_dict=True)
+            else:
+                child['children'] = generate_object_tree(query & f"{table_arr[cur_level]}_id={entry}", exclude_levels, cur_level + 1)
+            children.append(child)
+    return children
+
 # results methods: going to keep them here for now for simplicity
 
 def get_metadata_helper(level: str, id: int) -> dict:
