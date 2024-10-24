@@ -6,6 +6,7 @@ import datetime
 import helpers.utils
 import base64
 from io import BytesIO
+from tqdm import tqdm
 import h5py
 from matplotlib.figure import Figure
 
@@ -136,14 +137,20 @@ def create_query(query_obj: dict, username: str, db_param: dj.VirtualModule) -> 
 # the actual fields can be narrowed down later (in terms of what needs to be displayed), doesn't matter right now.
 # format: {object:{...}, children:[{object:{...}, children:[...]}, {object:{...}, children:[...]}, ...]}
 def generate_tree(query: dj.expression.QueryExpression, 
-                  exclude_levels: list, 
+                  exclude_levels: list, # set to [] to include everything
+                  include_meta: bool = False, # includes metadata + responses + stimuli
                   cur_level: int = 0) -> list:
     if cur_level == 7:
         return []
     children = []
-    for entry in np.unique(query.fetch(f'{table_arr[cur_level]}_id')):
+    if cur_level == 0:
+        iter_obj = tqdm(np.unique(query.fetch(f'{table_arr[cur_level]}_id')))
+    else:
+        iter_obj = np.unique(query.fetch(f'{table_arr[cur_level]}_id'))
+    for entry in iter_obj:
         if table_arr[cur_level] in exclude_levels:
-            children.extend(generate_tree(query & f"{table_arr[cur_level]}_id={entry}", exclude_levels, cur_level + 1))
+            children.extend(generate_tree(query & f"{table_arr[cur_level]}_id={entry}", 
+                                          exclude_levels, include_meta, cur_level + 1))
         else:
             child = {}
             obj: dict = ((table_dict[table_arr[cur_level]] & f"id={entry}"
@@ -160,16 +167,20 @@ def generate_tree(query: dj.expression.QueryExpression,
                 child['label'] = obj['label']
             if 'protocol_name' in obj.keys():
                 child['protocol'] = obj['protocol_name']
-            # child['object'] = (table_dict[table_arr[cur_level]] & f"id={entry}"
-            #                 ).fetch(as_dict=True) if table_arr[cur_level] != 'epoch_group' and table_arr[cur_level] != 'epoch_block' else (
-            #                     (table_dict[table_arr[cur_level]] & f"id={entry}") * Protocol.proj(protocol_name = 'name')).fetch(as_dict=True)
+            if include_meta:
+                child['object'] = (table_dict[table_arr[cur_level]] & f"id={entry}"
+                                ).fetch(as_dict=True) if table_arr[cur_level] != 'epoch_group' and table_arr[cur_level] != 'epoch_block' else (
+                                    (table_dict[table_arr[cur_level]] & f"id={entry}") * Protocol.proj(protocol_name = 'name')).fetch(as_dict=True)
             child['tags'] = (Tags & f'table_name="{table_arr[cur_level]}"' & f'table_id={entry}').proj('user', 'tag').fetch(as_dict=True)
             if table_arr[cur_level] == 'epoch':
                 child['children'] = []
-                # child['responses'] = (Response & f'parent_id={entry}').fetch(as_dict=True)
-                # child['stimuli'] = (Stimulus & f'parent_id={entry}').fetch(as_dict=True)
+                if include_meta:
+                    child['responses'] = (Response & f'parent_id={entry}').fetch(as_dict=True)
+                    child['stimuli'] = (Stimulus & f'parent_id={entry}').fetch(as_dict=True)
             else:
-                child['children'] = generate_tree(query & f"{table_arr[cur_level]}_id={entry}", exclude_levels, cur_level + 1)
+                child['children'] = generate_tree(
+                    query & f"{table_arr[cur_level]}_id={entry}",
+                    exclude_levels, include_meta, cur_level + 1)
             children.append(child)
     return children
 

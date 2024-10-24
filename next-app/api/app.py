@@ -5,6 +5,7 @@ from flask_cors import CORS
 import datajoint as dj
 import pymysql
 import time
+import json
 
 # fix for wget
 # import ssl
@@ -25,13 +26,15 @@ CORS(app)
 # immutable globals
 home_dir: str = os.getcwd()
 schema_path: str = './api/schema.py'
-db_dir: str = "../databases"#"/Users/samarjit/workspace/neuro/samarjit_dj_tool/datajoint/databases"#
+db_dir: str = os.path.abspath("../databases")#"/Users/samarjit/workspace/neuro/samarjit_dj_tool/datajoint/databases"#
+download_dir: str = os.path.abspath("../downloads") # similar to above
 
 # mutable globals (should be saved to a session)
 mea_dir: str = None
 db: dj.VirtualModule = None
 username: str = "guest"
 query: dj.expression.QueryExpression = None
+exclude_levels: list = []
 
 # progress tracking globals
 add_data_started = False
@@ -294,13 +297,15 @@ def get_levels_and_fields():
 def execute_query():
     if db and username:
         global query
+        global exclude_levels
         # try:
         print("Querying", flush=True)
         query = create_query(request.json.get('query_obj'), username, db)
         print("Constructed query", flush=True)
         if query is not None:
             if len(query) > 0:
-                tree = generate_tree(query, request.json.get('exclude_levels'))
+                exclude_levels = request.json.get('exclude_levels')
+                tree = generate_tree(query, exclude_levels)
                 print("Query executed", flush=True)
                 return jsonify({"results": tree}), 200
             else:
@@ -311,6 +316,37 @@ def execute_query():
         return jsonify({"message": "Connect and sign in first!"}), 400
     
 # 3: Results methods: you can add your own visualizations here as well
+
+def download_thread(query, bool_exclude_levels, bool_include_meta, filename):
+    try:
+        tree = generate_tree(query, 
+                                 exclude_levels if bool_exclude_levels else [],
+                                 bool_include_meta)
+        print("Generated. Downloading to ", filename, flush=True)
+        with open(filename, 'w') as f:
+            # we must handle datetime objects
+            f.write(json.dumps(tree, default=str))
+        print("Downloaded", flush=True)
+    except Exception as e:
+        print(f"Error downloading results: {e}", flush=True)
+
+# include_meta: bool, exclude_levels: bool -> None
+@app.route('/results/download-results', methods=['POST'])
+def download_results():
+    if query and exclude_levels:
+        try:
+            if not os.path.isdir(download_dir):
+                os.mkdir(download_dir)
+            filename = f"results_{time.strftime('%Y%m%d_%H%M%S')}.json"
+            Thread(target=download_thread,
+                   args=(query, request.json.get('exclude_levels'), 
+                         request.json.get('include_meta'), f"{download_dir}/{filename}")).start()
+            return jsonify({"message": 
+                            f"Downloading to {filename}...\nThis can take a while, check progress in terminal"}), 200
+        except Exception as e:
+            return jsonify({"message": f"Error starting download: {e}"}), 400
+    else:
+        return jsonify({"message": "Run a query first!"}), 400
 
 @app.route('/results/get-metadata', methods=['POST'])
 def get_metadata():
