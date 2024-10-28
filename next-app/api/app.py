@@ -333,7 +333,7 @@ def download_thread(query, bool_exclude_levels, bool_include_meta, filename):
 # include_meta: bool, exclude_levels: bool -> None
 @app.route('/results/download-results', methods=['POST'])
 def download_results():
-    if query and exclude_levels:
+    if query:
         try:
             if not os.path.isdir(download_dir):
                 os.mkdir(download_dir)
