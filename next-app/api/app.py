@@ -14,6 +14,7 @@ import json
 # import custom functions
 from helpers.init import create_database, delete_database, start_database, stop_database
 from helpers.pop import append_data
+from helpers.query import saved_queries, add_query, delete_query
 from helpers.query import query_levels, table_fields, create_query, generate_tree
 from helpers.query import get_metadata_helper
 from helpers.query import get_options, get_trace_binary, get_spikehist_binary
@@ -289,6 +290,40 @@ def get_levels_and_fields():
         return jsonify({"levels": levels, "fields": fields, "tag_fields": tag_fields}), 200
     else:
         return jsonify({"message": "No database connection!"}), 400
+    
+# methods to inject saved queries
+
+# None -> queries: dict
+@app.route('/query/get-saved-queries', methods=['GET'])
+def get_saved_queries():
+    if db and username:
+        return jsonify({"queries": saved_queries(download_dir)}), 200
+    else:
+        return jsonify({"message": "No database connection!"}), 400
+    
+# query_name: str, query_obj: dict -> None
+@app.route('/query/add-saved-query', methods=['POST'])
+def add_saved_query():
+    if db and username:
+        try:
+            add_query(request.json.get('query_name'), request.json.get('query_obj'), download_dir)
+            return jsonify({"message": "Query saved successfully!"}), 200
+        except Exception as e:
+            return jsonify({"message": f"Error saving query: {e}"}), 400
+    else:
+        return jsonify({"message": "Connect and sign in first!"}), 400
+    
+# query_name: str -> None
+@app.route('/query/delete-saved-query', methods=['POST'])
+def delete_saved_query():
+    if db and username:
+        try:
+            delete_query(request.json.get('query_name'), download_dir)
+            return jsonify({"message": "Query deleted successfully!"}), 200
+        except Exception as e:
+            return jsonify({"message": f"Error deleting query: {e}"}), 400
+    else:
+        return jsonify({"message": "Connect and sign in first!"}), 400
 
 # 2.2: Now we can actually execute the query!    
 
