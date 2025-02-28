@@ -64,7 +64,7 @@ def max_id(table: dj.Manual) -> int:
 
 def build_tuple(base_tuple: dict, level: str, meta: dict) -> dict:
     for dj_name, meta_name in fields[level]:
-        if meta_name in meta.keys():
+        if meta_name in meta.keys() and meta[meta_name] is not None:
             field_obj = table_dict[level].heading.attributes[dj_name]
             if field_obj.type == 'timestamp':
                 # currently in string form, example "01/22/2021 09:33:51:729159"
@@ -202,7 +202,7 @@ def append_response(epoch_id: int, device_name: str, response: dict, is_mea: boo
     base_tuple = {
         'parent_id': epoch_id,
         'device_name': device_name,
-        'h5path': response['h5path'] if not is_mea else ''
+        'h5path': response['h5path']
     }
     Response.insert1(build_tuple(base_tuple, 'response', response))
 
@@ -211,7 +211,7 @@ def append_stimulus(epoch_id: int, device_name: str, stimulus: dict, is_mea: boo
         'h5_uuid': stimulus['uuid'],
         'parent_id': epoch_id,
         'device_name': device_name,
-        'h5path': stimulus['h5path'] if not is_mea else ''
+        'h5path': stimulus['h5path']
     })
 
 def append_epoch(experiment_id: int, parent_id: int, epoch: dict, user: str, tags: dict, is_mea: bool):
@@ -243,12 +243,24 @@ def append_epoch_block(experiment_id: int, parent_id: int, epoch_block: dict, us
     #     'protocol_id': append_protocol(epoch_block['protocolID']),
     #     'chunk_id': get_block_chunk(experiment_id, epoch_block['dataFile']) if is_mea else ''
     # })
+    # Get the chunk_id from the data directory.
+    if is_mea:
+        data_xxx = epoch_block['dataFile'].split('/')[1]
+        exp_name = (Experiment & f"id={experiment_id}").fetch1()['data_file']
+        data_dir = exp_name + '/' + data_xxx + '/'
+    else:
+        data_dir = ''
+    try:
+        chunk_id = get_block_chunk(experiment_id, data_dir) if is_mea else ''
+    except Exception as e:
+        print(f"Error getting chunk_id for {experiment_id}, {data_dir}: {e}")
+        chunk_id = ''
     base_tuple = {
         'experiment_id': experiment_id,
         'parent_id': parent_id,
-        'data_dir': epoch_block['dataFile'] if is_mea else '',
+        'data_dir': data_dir, #epoch_block['dataFile'] if is_mea else '',
         'protocol_id': append_protocol(epoch_block['protocolID']),
-        'chunk_id': get_block_chunk(experiment_id, epoch_block['dataFile']) if is_mea else ''
+        'chunk_id': chunk_id #get_block_chunk(experiment_id, epoch_block['dataFile']) if is_mea else ''
     }
     EpochBlock.insert1(build_tuple(base_tuple, 'epoch_block', epoch_block))
     epoch_block_id = max_id(EpochBlock)
@@ -357,7 +369,10 @@ def append_experiment(meta: str, data: str, tags: str, experiment: dict, user: s
     # })
     experiment_id = max_id(Experiment)
     if experiment['rig_type'] == 'MEA':
-        append_experiment_analysis(experiment_id, data)
+        try:
+            append_experiment_analysis(experiment_id, data)
+        except Exception as e:
+            print(f"Error adding analysis for experiment {experiment_id}: {e}")
     tags_dict = append_tags(experiment['uuid'], experiment_id, 'experiment', experiment_id, None, tags_dict)
     for animal in experiment['animals']:
         append_animal(experiment_id, experiment_id, animal, user, tags_dict,

@@ -1,9 +1,10 @@
 import React, { Component } from 'react';
 import axios from 'axios';
+// import dynamic from "next/dynamic";
 
 import AddIcon from '@mui/icons-material/Add';
-import { Button, Checkbox } from '@blueprintjs/core';
-import { Alert, Snackbar, CircularProgress, 
+import { Button, ButtonGroup, Checkbox, ControlGroup, InputGroup, Popover, Menu, MenuItem } from '@blueprintjs/core';
+import { Alert, Snackbar, CircularProgress,
     Accordion, AccordionSummary, AccordionDetails,
     FormGroup} from '@mui/material';
 import { Modal, Box } from '@mui/material';
@@ -25,6 +26,11 @@ const style = {
     p: 4,
   };
 
+//   const DynamicReactJson = dynamic(import('@microlink/react-json-view').then((mod) => mod.default), { 
+//     ssr: false,
+//     loading: () => <p>Loading...</p>,
+// });
+
 class QueryContainer extends Component {
     constructor(props) {
     super(props);
@@ -37,7 +43,11 @@ class QueryContainer extends Component {
         open: false,
         query_obj: {},
         final_query: {},
+        injected_query: {},
+        set_query: "",
+        queries: {},
         exclude_levels: [],
+        query_name: "",
         hideExclude: false,
         modalOpen: false
     };
@@ -68,6 +78,7 @@ class QueryContainer extends Component {
 
     componentDidMount() {
         this.getLevelsAndFields();
+        this.getQueryList();
     }
     
     handleClose = (event, reason) => {
@@ -89,12 +100,13 @@ class QueryContainer extends Component {
             }
         }
         this.setState({ final_query: temp_obj });
+        // this.setState({ injected_query: {} });
         this.props.onQueryObj(temp_obj);
     }
 
     handleQueryChange = (query, table_name) => {
         let temp_obj = {};
-        if (query == {}) {
+        if (Object.keys(query).length == 0) {
             temp_obj = this.state.query_obj;
             delete temp_obj[table_name];
         } else {
@@ -129,13 +141,70 @@ class QueryContainer extends Component {
         }
     }
 
+    handleNameChange = (value) => {
+        this.setState({ query_name: value });
+    }
+
+    handleQueryInject = (set_query, query) => {
+        this.handleAfterEffects(structuredClone(query), this.state.hideExclude);
+        this.setState({ injected_query: {}, set_query: "wipe" }, () => {
+            this.setState({ injected_query: query, set_query: set_query });
+        });
+        this.setState({ query_obj: query });
+    }
+
+    handleQueryClear = () => {
+        this.handleAfterEffects({}, this.state.hideExclude);
+        this.setState({ injected_query: {}, set_query: "wipe" }, () => {
+            this.setState({ injected_query: {}, set_query: "empty" })
+        });
+        this.setState({ query_obj: {} });
+    }
+
+    getQueryList = () => {
+        axios.get('http://localhost:3000/api/query/get-saved-queries')
+        .then(response => {
+            this.setState({ queries: response.data.queries });
+        })
+        .catch(error => {
+            this.setState({ error: error.response.data.message, response: null, open: true});
+        });
+    }
+
+    handleAddQuery = () => {
+        axios.post('http://localhost:3000/api/query/add-saved-query', {
+            query_name: this.state.query_name,
+            query_obj: this.state.query_obj
+        })
+        .then(response => {
+            this.setState({ response: response.data.message, error: null, open: true });
+            this.getQueryList();
+        })
+        .catch(error => {
+            this.setState({ error: error.response.data.message, response: null, open: true });
+        });
+    }
+
+    handleDeleteQuery = (query_name) => {
+        axios.post('http://localhost:3000/api/query/delete-saved-query', {
+            query_name: query_name
+        })
+        .then(response => {
+            this.setState({ response: response.data.message, error: null, open: true });
+            this.getQueryList();
+        })
+        .catch(error => {
+            this.setState({ error: error.response.data.message, response: null, open: true });
+        });
+    }
+
     handleExcludeClick = () => {
         this.handleAfterEffects(structuredClone(this.state.query_obj), !this.state.hideExclude);
         this.setState({ hideExclude: !this.state.hideExclude});
     }
 
     render() {
-    const { error, response, open, 
+    const { error, response, open, injected_query, query_name, set_query, queries, query_obj,
         levels, fields, tag_fields, modalOpen, hideExclude } = this.state;
 
     return (
@@ -173,20 +242,50 @@ class QueryContainer extends Component {
                 <Checkbox onChange={this.handleLevelSelect} label={level} value={level} defaultChecked={true} />
             </AccordionSummary>
             <AccordionDetails>
-                <LogicBlock key={level} 
+                <LogicBlock key={level}
                 table_name={level}
-                fields={fields[level]} 
+                fields={fields[level]}
                 tag_fields={tag_fields}
+                query={injected_query[level] ? injected_query[level] : null}
+                set_query={set_query}
                 onQueryChange={this.handleQueryChange} />
             </AccordionDetails>
             </Accordion>
         ))}
-        <FormGroup inline={true}>
+        <FormGroup>
         <Checkbox
             checked={hideExclude}
             onChange={this.handleExcludeClick}
             label='hide excluded'/>
-        <Button onClick={this.handleModalOpen}>Peek at QueryObj</Button>
+        <ControlGroup>
+            <InputGroup small={true} type="text" value={query_name} onValueChange={this.handleNameChange} placeholder="Name for query" />
+            <ButtonGroup outlined={true}>
+                <Button small={true} icon="add" intent='success'
+                disabled={query_name == ""} onClick={this.handleAddQuery}>
+                Save current query</Button>
+            </ButtonGroup>
+        </ControlGroup>
+        <ButtonGroup>
+            <Button small={true} onClick={this.handleModalOpen}>Peek at QueryObj</Button>
+            <Button small={true} icon="eraser" intent="warning" disabled={Object.keys(query_obj).length == 0}
+            onClick={this.handleQueryClear}>Clear</Button>
+            <Popover content={<Menu>
+                {Object.keys(queries).map((key, index) => (
+                    <MenuItem key={key} 
+                    icon="application"
+                    text={key}
+                    children={<>
+                        <MenuItem text="inject ..." intent='primary' icon="bring-data"
+                        onClick={() => this.handleQueryInject(key, this.state.queries[key])}/>
+                        <MenuItem text="delete ..." intent='danger' icon="trash"
+                        onClick={() => this.handleDeleteQuery(key)}/>
+                    </>}/>
+                ))}
+            </Menu>} placement="bottom-start">
+                <Button alignText="left" disabled= {Object.keys(queries).length == 0} small={true}
+                icon="applications" rightIcon="caret-down" text="Saved queries ..." />
+            </Popover>
+        </ButtonGroup>
         </FormGroup>
         {/* {isLoading ? <CircularProgress /> : null} */}
     </div> : <p>Loading...</p>}

@@ -6,6 +6,7 @@ import datetime
 import helpers.utils
 import base64
 from io import BytesIO
+from tqdm import tqdm
 import h5py
 from matplotlib.figure import Figure
 
@@ -79,6 +80,27 @@ def table_fields(table_name: str, username: str, db_param: dj.VirtualModule) -> 
         tuples.append(('protocol_name', 'string'))
     return tuples
 
+def saved_queries(download_dir: str) -> dict:
+    if not os.path.exists(os.path.join(download_dir, 'query.json')):
+        return {}
+    # if it does, open the json file and read in the keys
+    with open(os.path.join(download_dir, 'query.json'), 'r') as f:
+        queries = json.load(f)
+        return queries
+    
+def add_query(query_name: str, query_obj: dict, download_dir: str):
+    queries = saved_queries(download_dir)
+    queries[query_name] = query_obj
+    with open(os.path.join(download_dir, 'query.json'), 'w') as f:
+        json.dump(queries, f)
+
+def delete_query(query_name: str, download_dir: str):
+    queries = saved_queries(download_dir)
+    if query_name in queries.keys():
+        queries.pop(query_name)
+    with open(os.path.join(download_dir, 'query.json'), 'w') as f:
+        json.dump(queries, f)
+
 # given cond = {type, value}
 def process_condition(table_name: str, cond: dict):
     if cond['type'] == 'TAG':
@@ -99,7 +121,7 @@ def apply_conditions(conds: dict, table_name: str) -> list:
     if type == 'AND' or type == 'NOT':
         cur_cond = dj.AndList(cur_cond)
         if type == 'NOT':
-            cur_cond = dj.Not(cur_cond)
+            cur_cond = [dj.Not(cur_cond)]
     return cur_cond
 
 # helper for exec query that actually processes the query object
@@ -136,17 +158,87 @@ def create_query(query_obj: dict, username: str, db_param: dj.VirtualModule) -> 
 # the actual fields can be narrowed down later (in terms of what needs to be displayed), doesn't matter right now.
 # format: {object:{...}, children:[{object:{...}, children:[...]}, {object:{...}, children:[...]}, ...]}
 def generate_tree(query: dj.expression.QueryExpression, 
+                  exclude_levels: list, # set to [] to include everything
+                  include_meta: bool = False, # includes metadata + responses + stimuli
+                  cur_level: int = 0) -> list:
+    if cur_level == 7:
+        return []
+    children = []
+    if cur_level == 0:
+        iter_obj = tqdm(np.unique(query.fetch(f'{table_arr[cur_level]}_id')))
+    else:
+        iter_obj = np.unique(query.fetch(f'{table_arr[cur_level]}_id'))
+    for entry in iter_obj:
+        if table_arr[cur_level] in exclude_levels:
+            children.extend(generate_tree(query & f"{table_arr[cur_level]}_id={entry}", 
+                                          exclude_levels, include_meta, cur_level + 1))
+        else:
+            child = {}
+            obj: dict = ((table_dict[table_arr[cur_level]] & f"id={entry}"
+                            ).fetch(as_dict=True) if table_arr[cur_level] != 'epoch_group' and table_arr[cur_level] != 'epoch_block' else (
+                                (table_dict[table_arr[cur_level]] & f"id={entry}") * Protocol.proj(protocol_name = 'name')
+                                ).fetch(as_dict=True))[0]
+            child['level'] = table_arr[cur_level]
+            child['id'] = obj['id']
+            if child['level'] == 'experiment':
+                child['is_mea'] = obj['is_mea']
+            else:
+                child['experiment_id'] = obj['experiment_id']
+            if 'label' in obj.keys():
+                child['label'] = obj['label']
+            if 'protocol_name' in obj.keys():
+                child['protocol'] = obj['protocol_name']
+            if include_meta:
+                child['object'] = (table_dict[table_arr[cur_level]] & f"id={entry}"
+                                ).fetch(as_dict=True) if table_arr[cur_level] != 'epoch_group' and table_arr[cur_level] != 'epoch_block' else (
+                                    (table_dict[table_arr[cur_level]] & f"id={entry}") * Protocol.proj(protocol_name = 'name')).fetch(as_dict=True)
+            child['tags'] = (Tags & f'table_name="{table_arr[cur_level]}"' & f'table_id={entry}').proj('user', 'tag').fetch(as_dict=True)
+            if table_arr[cur_level] == 'epoch':
+                child['children'] = []
+                if include_meta:
+                    child['responses'] = (Response & f'parent_id={entry}').fetch(as_dict=True)
+                    child['stimuli'] = (Stimulus & f'parent_id={entry}').fetch(as_dict=True)
+            else:
+                child['children'] = generate_tree(
+                    query & f"{table_arr[cur_level]}_id={entry}",
+                    exclude_levels, include_meta, cur_level + 1)
+            children.append(child)
+    return children
+
+# Generate the full obejct tree, including responses and stimuli
+def generate_object_tree(query: dj.expression.QueryExpression, 
                   exclude_levels: list, 
                   cur_level: int = 0) -> list:
+    """ Generate the full object tree, including responses and stimuli. 
+    Args:
+        query (dj.expression.QueryExpression): The query to execute
+        exclude_levels (list): List of levels to exclude
+        cur_level (int): The current level of the tree
+    Returns:
+        list: The object tree
+    """
     if cur_level == 7:
         return []
     children = []
     for entry in np.unique(query.fetch(f'{table_arr[cur_level]}_id')):
         if table_arr[cur_level] in exclude_levels:
-            children.extend(generate_tree(query & f"{table_arr[cur_level]}_id={entry}", exclude_levels, cur_level + 1))
+            children.extend(generate_object_tree(query & f"{table_arr[cur_level]}_id={entry}", exclude_levels, cur_level + 1))
         else:
             child = {}
+            obj: dict = ((table_dict[table_arr[cur_level]] & f"id={entry}"
+                            ).fetch(as_dict=True) if table_arr[cur_level] != 'epoch_group' and table_arr[cur_level] != 'epoch_block' else (
+                                (table_dict[table_arr[cur_level]] & f"id={entry}") * Protocol.proj(protocol_name = 'name')
+                                ).fetch(as_dict=True))[0]
             child['level'] = table_arr[cur_level]
+            child['id'] = obj['id']
+            if child['level'] == 'experiment':
+                child['is_mea'] = obj['is_mea']
+            else:
+                child['experiment_id'] = obj['experiment_id']
+            if 'label' in obj.keys():
+                child['label'] = obj['label']
+            if 'protocol_name' in obj.keys():
+                child['protocol'] = obj['protocol_name']
             child['object'] = (table_dict[table_arr[cur_level]] & f"id={entry}"
                             ).fetch(as_dict=True) if table_arr[cur_level] != 'epoch_group' and table_arr[cur_level] != 'epoch_block' else (
                                 (table_dict[table_arr[cur_level]] & f"id={entry}") * Protocol.proj(protocol_name = 'name')).fetch(as_dict=True)
@@ -156,11 +248,14 @@ def generate_tree(query: dj.expression.QueryExpression,
                 child['responses'] = (Response & f'parent_id={entry}').fetch(as_dict=True)
                 child['stimuli'] = (Stimulus & f'parent_id={entry}').fetch(as_dict=True)
             else:
-                child['children'] = generate_tree(query & f"{table_arr[cur_level]}_id={entry}", exclude_levels, cur_level + 1)
+                child['children'] = generate_object_tree(query & f"{table_arr[cur_level]}_id={entry}", exclude_levels, cur_level + 1)
             children.append(child)
     return children
 
 # results methods: going to keep them here for now for simplicity
+
+def get_metadata_helper(level: str, id: int) -> dict:
+    return (table_dict[level] & f"id={id}").fetch1()
 
 def get_options(level:str, id: int, experiment_id: int) -> dict:
     if level == 'epoch':
@@ -193,6 +288,26 @@ def get_options(level:str, id: int, experiment_id: int) -> dict:
                             'vis_type': 'epoch_block-mea'})
         return {'algorithms': algorithms}
     return None
+
+# direct data grabber for Mike's code. Table name expected to be 'Stimulus'.
+# for patch data only, since Experiment.data_file is empty for MEA data.
+# returns the list object stored in data['quantity'] in the original h5file, 
+# assuming h5path stored is well-formed
+def get_data_generic(table_name: str, id: int):
+    if table_name == 'Stimulus' or table_name == 'Response':
+        # use parent_id to get epoch -> use experiment_id to get experiment -> get data_file
+        h5_file = (Experiment & (
+                        Epoch & (
+                            table_dict[table_name] & f'id={id}').fetch1('parent_id')
+                        ).fetch1('experiment_id')
+                    ).fetch1('data_file')
+    else:
+        h5_file = (Experiment & (
+                        table_dict[table_name] & f'id={id}').fetch1('experiment_id')
+                    ).fetch1('data_file')
+    h5_path = (table_dict[table_name] & f'id={id}').fetch1('h5path')
+    with h5py.File(h5_file, 'r') as f:
+        return f[h5_path]['data']['quantity']
 
 def get_trace_binary(h5_file: str, h5_path: str) -> bytes:
     with h5py.File(h5_file, 'r') as f:

@@ -32,8 +32,37 @@ class LogicBlock extends Component {
     //     });
     // }
 
+    componentDidUpdate(prevProps) {
+        if (prevProps.set_query !=  this.props.set_query 
+            // || prevProps.query != this.props.query
+        ) {
+            // check that current query is not empty
+            if (this.props.query != null) {
+                // console.log("inserting state for table", this.props.table_name);
+                // console.log("state in logic block: ", this.props.query);
+                if (Object.keys(this.props.query)[0] === "AND") {
+                    this.setState({ logic_op: "all" });
+                } else if (Object.keys(this.props.query)[0] === "OR") {
+                    this.setState({ logic_op: "any" });
+                } else {
+                    this.setState({ logic_op: "none" });
+                }
+                if (this.props.query[Object.keys(this.props.query)[0]] != null) {
+                    this.setState({ criteria_list: this.props.query[Object.keys(this.props.query)[0]] });
+                } else {
+                    this.setState({ criteria_list: [] });
+                }
+                this.setState({ criteria_list: this.props.query[Object.keys(this.props.query)[0]] 
+                    ? this.props.query[Object.keys(this.props.query)[0]] : []
+                 });
+            } else { // if it is empty, wipe
+                this.setState({ criteria_list: [] });
+            }
+        }
+    }
+
     componentDidMount() {
-        // this.getFields();
+        this.componentDidUpdate({query: {}, set_query: ""});
     }
     
     handleClose = (event, reason) => {
@@ -44,11 +73,11 @@ class LogicBlock extends Component {
     }
 
     handleAddLogic = () => {
-        this.setState({ criteria_list: [...this.state.criteria_list, { "AND": [] }] });
+        this.setState({ criteria_list: [...(this.state.criteria_list ?? []), { "AND": [] }] });
     }
 
     handleAddCond = () => {
-        this.setState({ criteria_list: [...this.state.criteria_list, { "COND": {} }] });
+        this.setState({ criteria_list: [...(this.state.criteria_list ?? []), { "COND": {} }] });
     }
 
     handleLogicChange = (event) => {
@@ -97,7 +126,7 @@ class LogicBlock extends Component {
         </select>
         &nbsp; of these are true:
         <div style = {{marginLeft : "2%"}}>
-        {
+        {criteria_list &&
         criteria_list.map((criteria, index) => {
             const handleQueryChange = (query, table_name) => {
                 const updatedCriteriaList = [
@@ -126,6 +155,8 @@ class LogicBlock extends Component {
                             table_name={this.props.table_name}
                             fields={fields}
                             tag_fields={tag_fields}
+                            set_query={this.props.set_query}
+                            query={criteria}
                             onDelete={handleDelete}
                             onQueryChange={handleQueryChange}
                         />
@@ -135,6 +166,8 @@ class LogicBlock extends Component {
                             table_name={this.props.table_name}
                             fields={fields}
                             tag_fields={tag_fields}
+                            set_query={this.props.set_query}
+                            query={criteria["COND"]}
                             onDelete={handleDelete}
                             onQueryChange={handleQueryChange}
                         />

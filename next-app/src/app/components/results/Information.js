@@ -45,8 +45,8 @@ class Information extends Component {
     this.setState({ isLoading: true });
     axios.post('http://localhost:3000/api/results/get-visualization-data', {
         level: this.props.level,
-        id: this.props.metadata.id,
-        experiment_id: this.props.metadata.experiment_id
+        id: this.props.id,
+        experiment_id: this.props.experiment_id
     })
         .then(response => {
         // Handle success by setting the data in the state
@@ -80,7 +80,7 @@ class Information extends Component {
     }
 
     componentDidMount() {
-        if (this.props.metadata){
+        if (this.props.id){
             this.fetchOptions();
         } else {
             this.setState({ options: null });
@@ -98,7 +98,7 @@ class Information extends Component {
 
     componentDidUpdate(prevProps) {
     if (prevProps !== this.props) {
-        if (this.props.metadata){
+        if (this.props.id){
             this.fetchOptions();
         } else {
             this.setState({ options: null });
@@ -113,7 +113,7 @@ class Information extends Component {
         <div>
         {options &&
         <div>
-            Select device ({this.props.level} {this.props.metadata.id}):
+            Select device ({this.props.level} {this.props.id}):
             <select onChange={this.handleOptionChange} value={selected}>
             {Object.keys(options).map((key) => (
                 <optgroup key={key} label={key}>

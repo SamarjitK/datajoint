@@ -62,21 +62,22 @@ export default function ResultsTree(props){
         results.forEach((result) => {
             let object = {};
             if (result.level === "experiment") {
-                object['id'] = result.object[0].id + "-" + result.level + "-"  + result.object[0].id;
+                object['id'] = result.id + "-" + result.level + "-"  + result.id;
+                object['is_mea'] = result.is_mea;
             } else {
-                if ('experiment_id' in result.object[0]) {
-                    object['id'] = result.object[0].experiment_id + "-" + result.level + "-"  + result.object[0].id;
-                } else {
-                    console.log(result);
-                }
+                object['id'] = result.experiment_id + "-" + result.level + "-"  + result.id;
+            }
+            if (result.level === "epoch_group" || result.level === "epoch_block") {
+                object['protocol'] = result.protocol;
             }
             object['level'] = result.level;
-            object['metadata'] = result.object[0];
+            object['dj_id'] = result.id;
             object['tags'] = result.tags;
-            object['label'] = result.object[0].label ? result.object[0].label : object['id'];
+            object['label'] = result.label ? result.label : result.id.toString();
             object['children'] = updateItems(result.children);
             items.push(object);
         });
+        console.log(items);
         return items
     }
 
@@ -84,7 +85,7 @@ export default function ResultsTree(props){
 
     const handleFocus = (event, item) => {
         setFocusedItem(item);
-        props.onFocus(apiRef.current.getItem(item).metadata, apiRef.current.getItem(item).level);
+        props.onFocus(apiRef.current.getItem(item).level, apiRef.current.getItem(item).dj_id);
     }
 
     const handleAddTags = () => {

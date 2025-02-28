@@ -15,12 +15,13 @@ class CondBlock extends Component {
         open: false,
         table_name: null,
         cond_type: "PARAM",
-        field_index: null,
-        subfield_name: null,
-        subfield_type: null,
-        cur_operators: null,
-        type_set: false,
-        value: null,
+        field_index: 0,
+        subfield_name: "",
+        subfield_type: "",
+        type_set: true,
+        cur_operators: this.props.fields ? this.props.fields[0][1] == "string" ? this.str_ops : this.int_ops : null,
+        operator: "",
+        value: "",
         unsaved_changes: false,
     };
     }
@@ -28,12 +29,12 @@ class CondBlock extends Component {
     int_ops = [["=", "equal to"], ["!=", "not equal to"], ["<", "less than"], 
     [">", "greater than"], ["<=", "less than or equal to"], [">=", "greater than or equal to"]];
 
-    str_ops = this.int_ops.concat([[" like ", "like"], [" not like ", "not like"]]);
+    str_ops = this.int_ops.concat([["like", "like"], ["not like", "not like"]]);
 
     handleCondTypeChange = (value) => {
         this.setState({ cond_type: value });
         this.setState({ unsaved_changes: true });
-        this.setState({ field_index: null, subfield_name: null, subfield_type: null, type_set: false });
+        this.setState({ field_index: 0, subfield_name: "", subfield_type: "", type_set: false });
     }
 
     handleFieldChange = (event) => {
@@ -41,7 +42,7 @@ class CondBlock extends Component {
         if (this.state.cond_type == "PARAM" && this.props.fields[event.target.value][1] == "json") {
             this.setState({ type_set: false });
         } else {
-            this.setState({ subfield_type: null, subfield_name: null });
+            this.setState({ subfield_type: "", subfield_name: "" });
             this.setState({ type_set: true });
             let field_arr = this.state.cond_type == "PARAM" ? this.props.fields : this.props.tag_fields;
             this.setState({ cur_operators: 
@@ -53,7 +54,7 @@ class CondBlock extends Component {
 
     handleSubfieldChange = (value) => {
         this.setState({ subfield_name: value });
-        this.setState({ type_set: false, subfield_type: null, cur_operators: null });
+        this.setState({ type_set: false, subfield_type: "", cur_operators: null });
         this.setState({ unsaved_changes: true });
     }
 
@@ -74,8 +75,61 @@ class CondBlock extends Component {
         this.setState({ unsaved_changes: true });
     }
 
+    // method to reverse engineer the query object and populate the state!
+    componentDidUpdate(prevProps) {
+        if (Object.keys(this.props.query).length > 0
+            && prevProps.set_query !=  this.props.set_query) {
+            // console.log("setting state from query object", this.props.query);
+            this.setState({ cond_type: this.props.query.type });
+            // first, detect whether this is a json param field, other param field, or tag field
+            // based on query.value, which is constructed as shown in sendUp below
+            let field_name, field_index, subfield_name, subfield_type, cur_operators;
+            // if value contains "->>'$.", it is a json field.
+            if (this.props.query.value.includes("->>'$.")) {
+                // extract the field name and subfield name
+                field_name = this.props.query.value.split("->>'$")[0];
+                // get field_index from field_name, which is the index in props.fields[0]
+                field_index = this.props.fields.findIndex((field) => field[0] == field_name);
+                // subfield is between "->>'$." and "'"
+                subfield_name = this.props.query.value.split("->>'$.")[1].split("'")[0];
+                // if last character of query.value is ', it is a string field
+                if (this.props.query.value.slice(-1) == "'") {
+                    subfield_type = "string";
+                    cur_operators = this.str_ops;
+                } else {
+                    subfield_type = "number";
+                    cur_operators = this.int_ops;
+                }
+            } else if (this.props.query.type == "PARAM") {
+                field_name = this.props.query.value.split(" ")[0];
+                field_index = this.props.fields.findIndex((field) => field[0] == field_name);
+                cur_operators = this.props.fields[field_index][1] == "string" ? this.str_ops : this.int_ops;
+            } else {
+                field_name = this.props.query.value.split(" ")[0];
+                field_index = this.props.tag_fields.findIndex((field) => field[0] == field_name);
+                cur_operators = this.props.tag_fields[field_index][1] == "string" ? this.str_ops : this.int_ops;
+            }
+            let split_str = this.props.query.value.split(" ");
+            let operator = split_str.slice(1, -1).join(" ");
+            let value = split_str.slice(-1)[0];
+            if (value[0] == "'" && value.slice(-1) == "'") {
+                value = value.slice(1, -1);
+            }
+            // populate all states that apply.
+            this.setState({ field_index: field_index, type_set: true, unsaved_changes: false });
+            if (subfield_name) { // json field
+                this.setState({ subfield_name: subfield_name, subfield_type: subfield_type });
+            }
+            this.setState({ operator: operator, value: value, cur_operators: cur_operators });
+        }
+    }
+
+    componentDidMount() {
+        this.componentDidUpdate({query: {}, set_query: ""});
+    }
+
     sendUp = () => {
-        if (this.state.field_index && this.state.operator && this.state.value) {
+        if (this.state.operator && this.state.value) {
             // Need to construct value. First, adding the parameter: if it is a json field, formatted slightly different.
             let condition = "";
             if (this.state.cond_type == "PARAM" && this.props.fields[this.state.field_index][1] == "json") {
@@ -87,7 +141,7 @@ class CondBlock extends Component {
                 condition = this.props.tag_fields[this.state.field_index][0];
             }
             // Adding the operator and value
-            condition += this.state.operator;
+            condition += " " + this.state.operator + " ";
             if ((this.state.subfield_type && this.state.subfield_type == "string") 
                 || (this.state.cond_type == "PARAM" && this.props.fields[this.state.field_index][1] == "string")
                 || (this.state.cond_type == "TAG" && this.props.tag_fields[this.state.field_index][1] == "string")) {
@@ -108,8 +162,8 @@ class CondBlock extends Component {
     }
 
     render() {
-    const { error, response, open, cond_type, cur_operators,
-        field_index, subfield_type, type_set, unsaved_changes} = this.state;
+    const { error, response, open, cond_type, cur_operators, operator, value,
+        field_index, subfield_name, subfield_type, type_set, unsaved_changes} = this.state;
     const { fields, tag_fields, table_name } = this.props;
 
     return (
@@ -132,10 +186,10 @@ class CondBlock extends Component {
                 options={[
                     { label: 'PARAM', value: 'PARAM' },
                     { label: 'TAG', value: 'TAG' },]}
-                onValueChange={this.handleCondTypeChange} defaultValue='PARAM'/>
+                onValueChange={this.handleCondTypeChange} value={cond_type}/>
                 <HTMLSelect iconName='caret-down'
-                 onChange={this.handleFieldChange} defaultValue={""}>
-                    <option value="" disabled hidden>field name</option>
+                 onChange={this.handleFieldChange} value={field_index}>
+                    {/* <option value={-1} disabled hidden>field name</option> */}
                     <optgroup label="standard">
                         { cond_type == "PARAM" ?
                             fields.map((field, index) => (
@@ -157,7 +211,7 @@ class CondBlock extends Component {
                 </HTMLSelect>
                 </FormGroup>
                 {
-                cond_type == "TAG" && field_index == null &&
+                cond_type == "TAG" &&
                 <Callout intent="warning">
                     Note: these conditions filter out results with no tags.
                     To filter out results with specific tags, use an overall negation ("None of these are true").
@@ -169,15 +223,15 @@ class CondBlock extends Component {
                     Note: epoch groups not defined by a single protocol are set to <Code>protocol_name="no_group_protocol"</Code>.
                 </Callout>
                 }
-                { field_index && cond_type == "PARAM" && fields[field_index][1] == "json" &&
+                { cond_type == "PARAM" && fields[field_index][1] == "json" &&
                 <div>
                 <FormGroup inline={false} label="Subfield: ">
-                <InputGroup type="text" placeholder="json key" onValueChange={this.handleSubfieldChange} />
+                <InputGroup type="text" placeholder="json key" onValueChange={this.handleSubfieldChange} value={subfield_name} />
                 <SegmentedControl small={true} inline={true}
                 options={[
                     { label: 'string', value: 'string' },
                     { label: 'numeric', value: 'number' },]}
-                onValueChange={this.handleSubfieldTypeChange} defaultValue='string'/>
+                onValueChange={this.handleSubfieldTypeChange} value={subfield_type}/>
                 </FormGroup>
                 </div>
                 }
@@ -185,7 +239,7 @@ class CondBlock extends Component {
                 <div>
                 <ControlGroup>
                 <HTMLSelect
-                iconName='caret-down' onChange={this.handleOperatorChange} defaultValue={""}>
+                iconName='caret-down' onChange={this.handleOperatorChange} value={operator}>
                     <option value="" disabled hidden>Operator ...</option>
                 {cur_operators &&
                 cur_operators.map((operator, index) => (
@@ -193,7 +247,7 @@ class CondBlock extends Component {
                 ))
                 }
                 </HTMLSelect>
-                <InputGroup type="text" placeholder="value" fill={false}
+                <InputGroup type="text" placeholder="value" fill={false} value={value}
                 onValueChange={this.handleValueChange} />
                 </ControlGroup>
                 </div>
@@ -207,10 +261,10 @@ class CondBlock extends Component {
                 onClick={this.props.onDelete}>delete</Button>
                 <Button 
                 small={true} icon="saved" intent='primary'
-                disabled={!(field_index && this.state.operator && this.state.value)}
+                disabled={!(this.state.operator && this.state.value)}
                 onClick={this.sendUp}>save</Button>
             </ButtonGroup>
-            {this.state.field_index && this.state.operator && this.state.value && unsaved_changes && 
+            {operator && value && unsaved_changes && 
             "Unsaved changes"}
         </div>
         {/* {isLoading ? <CircularProgress /> : null} */}

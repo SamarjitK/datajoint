@@ -108,7 +108,18 @@ The top-right panel will be used for summary visualizations of whatever object w
 
 ## 5. Exporting results/tags
 
-The "Download JSON" button does exactly that. The JSON object is a direct representation of the results tree, with the datafile location stored in the topmost `experiment` level, and raw data paths (for single cell experiments) stored as devices under the `epoch` level.
+![export options](readme/download_options.png)
+
+There are multiple download options once you have queried. The in-browser option instantly gives you the raw tree (exactly what you see in the GUI) as JSON, downloaded through the browser.
+
+The other options write to a `downloads/` folder in the repository (you can change the location in `/api/app.py`). They are marked with a timestamp. You can choose to include:
+
+- Just the raw tree
+- Include full object metadata from datajoint
+- Include levels that aren't selected to be shown in the GUI
+- Both!
+
+Once you start the download, it will run in the background (it can take a while depending on your query). You can track the progress in the terminal.
 
 > In the future, chunk and analysis data for MEA (which are already in the database!) should also be displayed and be available to export.
 
