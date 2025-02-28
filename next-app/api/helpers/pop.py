@@ -129,9 +129,12 @@ def append_sorting_chunk(experiment_id: int, chunk_name: str, chunk_path: str):
 def append_experiment_analysis(experiment_id: int, exp_name: str):
     print(f"Adding analysis for experiment {experiment_id}, {exp_name}")
     exp_name = (Experiment & f"id={experiment_id}").fetch1()['data_file']
+    exp_name = os.path.basename(exp_name)[:-3]
     if exp_name not in os.listdir(NAS_DATA_DIR):
         print(f"Could not find data directory for experiment {exp_name}")
+    
     experiment_dir = os.path.join(NAS_DATA_DIR, exp_name)
+    print(f"Looking in {experiment_dir}")
     for file in os.listdir(experiment_dir):
         if os.path.isdir(os.path.join(experiment_dir, file)) and not file.startswith('data'):
             append_sorting_chunk(experiment_id, file, os.path.join(experiment_dir, file))

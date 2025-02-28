@@ -23,7 +23,7 @@ class Protocol(dj.Manual):
 
 @schema
 class Experiment(dj.Manual):
-    definition = f"""
+    definition = """
     # experiment metadata, including pointers to files
     id: int auto_increment
     ---
