@@ -108,11 +108,11 @@ def append_sorting_chunk(experiment_id: int, chunk_name: str, chunk_path: str):
     chunk_id = max_id(SortingChunk)
     for algorithm in os.listdir(chunk_path):
         algorithm_dir = os.path.join(chunk_path, algorithm)
-        if 'cluster_group.tsv' not in os.listdir(algorithm_dir):
+        if 'cluster_KSLabel.tsv' not in os.listdir(algorithm_dir):
             print(f"Could not find cluster_group.tsv in {algorithm_dir}")
             continue
         cluster_list = []
-        with open(os.path.join(algorithm_dir, 'cluster_group.tsv')) as f:
+        with open(os.path.join(algorithm_dir, 'cluster_KSLabel.tsv')) as f:
             # tsv where first column is "cluster_id", add each one to the database
             for line in f:
                 if line.startswith('cluster_id'):
@@ -143,9 +143,11 @@ def append_experiment_analysis(experiment_id: int, exp_name: str):
 def get_block_chunk(experiment_id: int, data_dir: str) -> int:
     data_index = data_dir.split("/")[1]
     possible_chunks = (SortingChunk & f"experiment_id={experiment_id}").fetch()['chunk_name']
-    experiment_dir = os.path.join(NAS_DATA_DIR, data_dir.split("/")[0])
+    exp_name = (Experiment & f"id={experiment_id}").fetch1()['data_file']
+    exp_name = os.path.basename(exp_name)[:-3]
+    experiment_dir = os.path.join(NAS_DATA_DIR, exp_name)
     for chunk_name in possible_chunks:
-        f = os.path.join(experiment_dir, f"{data_dir.split('/')[0]}_{chunk_name}.txt")
+        f = os.path.join(experiment_dir, f"{exp_name}_{chunk_name}.txt")
         if not os.path.exists(f):
             print(f"ERROR: could not find chunk file: {f}")
             continue
@@ -250,7 +252,8 @@ def append_epoch_block(experiment_id: int, parent_id: int, epoch_block: dict, us
     if is_mea:
         data_xxx = epoch_block['dataFile'].split('/')[1]
         exp_name = (Experiment & f"id={experiment_id}").fetch1()['data_file']
-        data_dir = exp_name + '/' + data_xxx + '/'
+        exp_name = os.path.basename(exp_name)[:-3]
+        data_dir = os.path.join(exp_name, data_xxx)
     else:
         data_dir = ''
     try:
