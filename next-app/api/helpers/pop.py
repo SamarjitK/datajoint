@@ -95,12 +95,16 @@ def append_sorting_files(chunk_id: int, algorithm: str, sorting_dir: str):
             CellTypeFile.insert1({"chunk_id": chunk_id, "algorithm": algorithm, "file_name": file})
             file_id = max_id(CellTypeFile)
             cell_types = []
-            with open(os.path.join(analysis_dir, file)) as f:
-                for line in f:
-                    # each line is cluster_id (two spaces) cell_type
-                    cluster_id, cell_type = line.split()
-                    sorted_cell_id = (SortedCell & f"chunk_id={chunk_id}" & f"algorithm='{algorithm}' " & f"cluster_id={cluster_id}").fetch1()['id']
-                    cell_types.append({"sorted_cell_id": sorted_cell_id, "file_id": file_id, "cell_type": cell_type})
+            try: 
+                with open(os.path.join(analysis_dir, file)) as f:
+                    for line in f:
+                        # each line is cluster_id (two spaces) cell_type
+                        cluster_id, cell_type = line.split()
+                        sorted_cell_id = (SortedCell & f"chunk_id={chunk_id}" & f"algorithm='{algorithm}' " & f"cluster_id={cluster_id}").fetch1()['id']
+                        cell_types.append({"sorted_cell_id": sorted_cell_id, "file_id": file_id, "cell_type": cell_type})
+            except Exception as e:
+                print(f"Error reading cell typing file {file}: {e}")
+                continue
             SortedCellType.insert(cell_types)
 
 def append_sorting_chunk(experiment_id: int, chunk_name: str, chunk_path: str):
@@ -136,6 +140,7 @@ def append_experiment_analysis(experiment_id: int, exp_name: str):
     # exp_name = os.path.basename(exp_name)[:-3]
     if exp_name not in os.listdir(NAS_DATA_DIR):
         print(f"Could not find data directory for experiment {exp_name}")
+        return
     
     experiment_dir = os.path.join(NAS_DATA_DIR, exp_name)
     print(f"Looking in {experiment_dir}")
