@@ -265,11 +265,17 @@ def append_epoch_block(experiment_id: int, parent_id: int, epoch_block: dict, us
         data_dir = os.path.join(exp_name, data_xxx)
     else:
         data_dir = ''
+    
     try:
-        chunk_id = get_block_chunk(experiment_id, data_dir) if is_mea else ''
+        chunk_id = ''
+        if is_mea:
+            # Check that spike sorted outputs exist for this Experiment
+            if os.path.exists(os.path.join(NAS_DATA_DIR, exp_name)):
+                chunk_id = get_block_chunk(experiment_id, data_dir)
     except Exception as e:
         print(f"Error getting chunk_id for {experiment_id}, {data_dir}: {e}")
         chunk_id = ''
+
     base_tuple = {
         'experiment_id': experiment_id,
         'parent_id': parent_id,
