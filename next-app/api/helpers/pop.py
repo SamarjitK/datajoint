@@ -255,7 +255,7 @@ def append_epoch_block(experiment_id: int, parent_id: int, epoch_block: dict, us
     # Get the chunk_id from the data directory.
     if is_mea:
         data_xxx = epoch_block['dataFile'].split('/')[1]
-        exp_name = (Experiment & f"id={experiment_id}").fetch1()['exp_name']
+        exp_name = (Experiment & f"id={experiment_id}").fetch1('exp_name')
         # exp_name = os.path.basename(exp_name)[:-3]
         data_dir = os.path.join(exp_name, data_xxx)
     else:
