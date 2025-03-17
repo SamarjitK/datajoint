@@ -107,9 +107,13 @@ def append_sorting_chunk(experiment_id: int, chunk_name: str, chunk_path: str):
     SortingChunk.insert1({'experiment_id': experiment_id, 'chunk_name': chunk_name})
     chunk_id = max_id(SortingChunk)
     for algorithm in os.listdir(chunk_path):
+        if 'kilosort' not in algorithm:
+            print(f'Populator not implemented for {algorithm}')
+            continue
+        
         algorithm_dir = os.path.join(chunk_path, algorithm)
         if 'cluster_KSLabel.tsv' not in os.listdir(algorithm_dir):
-            print(f"Could not find cluster_group.tsv in {algorithm_dir}")
+            print(f"Could not find cluster_KSLabel.tsv in {algorithm_dir}")
             continue
         cluster_list = []
         with open(os.path.join(algorithm_dir, 'cluster_KSLabel.tsv')) as f:
@@ -128,8 +132,8 @@ def append_sorting_chunk(experiment_id: int, chunk_name: str, chunk_path: str):
 
 def append_experiment_analysis(experiment_id: int, exp_name: str):
     print(f"Adding analysis for experiment {experiment_id}, {exp_name}")
-    exp_name = (Experiment & f"id={experiment_id}").fetch1()['data_file']
-    exp_name = os.path.basename(exp_name)[:-3]
+    # exp_name = (Experiment & f"id={experiment_id}").fetch1()['data_file']
+    # exp_name = os.path.basename(exp_name)[:-3]
     if exp_name not in os.listdir(NAS_DATA_DIR):
         print(f"Could not find data directory for experiment {exp_name}")
     
@@ -143,8 +147,8 @@ def append_experiment_analysis(experiment_id: int, exp_name: str):
 def get_block_chunk(experiment_id: int, data_dir: str) -> int:
     data_index = data_dir.split("/")[1]
     possible_chunks = (SortingChunk & f"experiment_id={experiment_id}").fetch()['chunk_name']
-    exp_name = (Experiment & f"id={experiment_id}").fetch1()['data_file']
-    exp_name = os.path.basename(exp_name)[:-3]
+    exp_name = (Experiment & f"id={experiment_id}").fetch1('exp_name')
+    # exp_name = os.path.basename(exp_name)[:-3]
     experiment_dir = os.path.join(NAS_DATA_DIR, exp_name)
     for chunk_name in possible_chunks:
         f = os.path.join(experiment_dir, f"{exp_name}_{chunk_name}.txt")
@@ -251,8 +255,8 @@ def append_epoch_block(experiment_id: int, parent_id: int, epoch_block: dict, us
     # Get the chunk_id from the data directory.
     if is_mea:
         data_xxx = epoch_block['dataFile'].split('/')[1]
-        exp_name = (Experiment & f"id={experiment_id}").fetch1()['data_file']
-        exp_name = os.path.basename(exp_name)[:-3]
+        exp_name = (Experiment & f"id={experiment_id}").fetch1()['exp_name']
+        # exp_name = os.path.basename(exp_name)[:-3]
         data_dir = os.path.join(exp_name, data_xxx)
     else:
         data_dir = ''
@@ -360,7 +364,9 @@ def append_animal(experiment_id: int, parent_id: int, animal: dict, user: str, t
         append_preparation(experiment_id, animal_id, preparation, user, tags, is_mea)
 
 def append_experiment(meta: str, data: str, tags: str, experiment: dict, user: str, tags_dict: dict):
+    exp_name = os.path.basename(data)[:-3]
     base_tuple = {
+        'exp_name': exp_name,
         'meta_file': meta,
         'data_file': data,
         'tags_file': tags,
@@ -376,7 +382,7 @@ def append_experiment(meta: str, data: str, tags: str, experiment: dict, user: s
     experiment_id = max_id(Experiment)
     if experiment['rig_type'] == 'MEA':
         try:
-            append_experiment_analysis(experiment_id, data)
+            append_experiment_analysis(experiment_id, exp_name)
         except Exception as e:
             print(f"Error adding analysis for experiment {experiment_id}: {e}")
     tags_dict = append_tags(experiment['uuid'], experiment_id, 'experiment', experiment_id, None, tags_dict)
@@ -414,6 +420,8 @@ def gen_meta_list(data_dir: str, meta_dir: str, tags_dir: str) -> list:
                     meta_file = os.path.join(meta_dir, item[:-3] + '.json')
                     if not os.path.exists(meta_file):
                         parse_data(full_path, meta_dir)
+                        # As parse_data is not implemented, we will skip this file for now.
+                        continue
                     # check for tags
                     tags_file = os.path.join(tags_dir, item[:-3] + '.json')
                     if not os.path.exists(tags_file):

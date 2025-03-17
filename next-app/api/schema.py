@@ -28,6 +28,7 @@ class Experiment(dj.Manual):
     id: int auto_increment
     ---
     h5_uuid: varchar(255)
+    exp_name: varchar(255)
     meta_file: varchar(255)
     data_file: varchar(255) # empty if MEA for now, maybe should store "/Volumes/data/data/sorted" here?
     tags_file: varchar(255)
