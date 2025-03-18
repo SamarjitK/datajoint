@@ -1,7 +1,7 @@
 import datajoint as dj
 
-NAS_DATA_DIR = '/Volumes/data/data/sorted/'
-NAS_ANALYSIS_DIR = '/Volumes/data/analysis/'
+NAS_DATA_DIR = '/Volumes/data/data/sorted'
+NAS_ANALYSIS_DIR = '/Volumes/data/analysis'
 
 fields = {
     'experiment': [
