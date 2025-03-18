@@ -16,7 +16,6 @@ flask = "^3.0.3"
 flask-cors = "^4.0.1"
 setuptools = "^71.1.0"
 matplotlib = "^3.9.2"
-jupyter = "^1.1.1"
 
 [build-system]
 requires = ["poetry-core"]
