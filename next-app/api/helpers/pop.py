@@ -405,6 +405,7 @@ def append_experiment(meta: str, data: str, tags: str, experiment: dict, user: s
 # If there are files to parse, throws error for now.
 def parse_data(source: str, dest: str):
     if source.endswith('.h5'):
+        print(f'Need to convert {source} to json')
         print("going to implement this eventually")
 
 def gen_tags(file_to_create: str, dir: str):
@@ -463,10 +464,12 @@ def append_data(data_dir: str, meta_dir: str, tags_dir: str, username: str, db_p
     meta_list = gen_meta_list(data_dir, meta_dir, tags_dir)
     records_added = 0
     for meta, data, tags in tqdm(meta_list):
-        print("Adding", meta, flush=True)
         # check if meta already in database
         if len(Experiment & f'meta_file="{meta}"') == 1:
+            print(f"Already in database: {meta}")
             continue
+        
+        print("Adding", meta, flush=True)
         # not in database, add to database
         with open(meta, 'r') as f:
             meta_dict = json.load(f)
