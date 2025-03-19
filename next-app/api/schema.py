@@ -23,11 +23,12 @@ class Protocol(dj.Manual):
 
 @schema
 class Experiment(dj.Manual):
-    definition = f"""
+    definition = """
     # experiment metadata, including pointers to files
     id: int auto_increment
     ---
     h5_uuid: varchar(255)
+    exp_name: varchar(255)
     meta_file: varchar(255)
     data_file: varchar(255) # empty if MEA for now, maybe should store "/Volumes/data/data/sorted" here?
     tags_file: varchar(255)

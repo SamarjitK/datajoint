@@ -95,24 +95,32 @@ def append_sorting_files(chunk_id: int, algorithm: str, sorting_dir: str):
             CellTypeFile.insert1({"chunk_id": chunk_id, "algorithm": algorithm, "file_name": file})
             file_id = max_id(CellTypeFile)
             cell_types = []
-            with open(os.path.join(analysis_dir, file)) as f:
-                for line in f:
-                    # each line is cluster_id (two spaces) cell_type
-                    cluster_id, cell_type = line.split()
-                    sorted_cell_id = (SortedCell & f"chunk_id={chunk_id}" & f"algorithm='{algorithm}' " & f"cluster_id={cluster_id}").fetch1()['id']
-                    cell_types.append({"sorted_cell_id": sorted_cell_id, "file_id": file_id, "cell_type": cell_type})
+            try: 
+                with open(os.path.join(analysis_dir, file)) as f:
+                    for line in f:
+                        # each line is cluster_id (two spaces) cell_type
+                        cluster_id, cell_type = line.split()
+                        sorted_cell_id = (SortedCell & f"chunk_id={chunk_id}" & f"algorithm='{algorithm}' " & f"cluster_id={cluster_id}").fetch1()['id']
+                        cell_types.append({"sorted_cell_id": sorted_cell_id, "file_id": file_id, "cell_type": cell_type})
+            except Exception as e:
+                print(f"Error reading cell typing file {file}: {e}")
+                continue
             SortedCellType.insert(cell_types)
 
 def append_sorting_chunk(experiment_id: int, chunk_name: str, chunk_path: str):
     SortingChunk.insert1({'experiment_id': experiment_id, 'chunk_name': chunk_name})
     chunk_id = max_id(SortingChunk)
     for algorithm in os.listdir(chunk_path):
+        if 'kilosort' not in algorithm:
+            print(f'Populator not implemented for {algorithm}')
+            continue
+        
         algorithm_dir = os.path.join(chunk_path, algorithm)
-        if 'cluster_group.tsv' not in os.listdir(algorithm_dir):
-            print(f"Could not find cluster_group.tsv in {algorithm_dir}")
+        if 'cluster_KSLabel.tsv' not in os.listdir(algorithm_dir):
+            print(f"Could not find cluster_KSLabel.tsv in {algorithm_dir}")
             continue
         cluster_list = []
-        with open(os.path.join(algorithm_dir, 'cluster_group.tsv')) as f:
+        with open(os.path.join(algorithm_dir, 'cluster_KSLabel.tsv')) as f:
             # tsv where first column is "cluster_id", add each one to the database
             for line in f:
                 if line.startswith('cluster_id'):
@@ -128,10 +136,14 @@ def append_sorting_chunk(experiment_id: int, chunk_name: str, chunk_path: str):
 
 def append_experiment_analysis(experiment_id: int, exp_name: str):
     print(f"Adding analysis for experiment {experiment_id}, {exp_name}")
-    exp_name = (Experiment & f"id={experiment_id}").fetch1()['data_file']
+    # exp_name = (Experiment & f"id={experiment_id}").fetch1()['data_file']
+    # exp_name = os.path.basename(exp_name)[:-3]
     if exp_name not in os.listdir(NAS_DATA_DIR):
         print(f"Could not find data directory for experiment {exp_name}")
+        return
+    
     experiment_dir = os.path.join(NAS_DATA_DIR, exp_name)
+    print(f"Looking in {experiment_dir}")
     for file in os.listdir(experiment_dir):
         if os.path.isdir(os.path.join(experiment_dir, file)) and not file.startswith('data'):
             append_sorting_chunk(experiment_id, file, os.path.join(experiment_dir, file))
@@ -140,9 +152,11 @@ def append_experiment_analysis(experiment_id: int, exp_name: str):
 def get_block_chunk(experiment_id: int, data_dir: str) -> int:
     data_index = data_dir.split("/")[1]
     possible_chunks = (SortingChunk & f"experiment_id={experiment_id}").fetch()['chunk_name']
-    experiment_dir = os.path.join(NAS_DATA_DIR, data_dir.split("/")[0])
+    exp_name = (Experiment & f"id={experiment_id}").fetch1('exp_name')
+    # exp_name = os.path.basename(exp_name)[:-3]
+    experiment_dir = os.path.join(NAS_DATA_DIR, exp_name)
     for chunk_name in possible_chunks:
-        f = os.path.join(experiment_dir, f"{data_dir.split('/')[0]}_{chunk_name}.txt")
+        f = os.path.join(experiment_dir, f"{exp_name}_{chunk_name}.txt")
         if not os.path.exists(f):
             print(f"ERROR: could not find chunk file: {f}")
             continue
@@ -246,15 +260,22 @@ def append_epoch_block(experiment_id: int, parent_id: int, epoch_block: dict, us
     # Get the chunk_id from the data directory.
     if is_mea:
         data_xxx = epoch_block['dataFile'].split('/')[1]
-        exp_name = (Experiment & f"id={experiment_id}").fetch1()['data_file']
-        data_dir = exp_name + '/' + data_xxx + '/'
+        exp_name = (Experiment & f"id={experiment_id}").fetch1('exp_name')
+        # exp_name = os.path.basename(exp_name)[:-3]
+        data_dir = os.path.join(exp_name, data_xxx)
     else:
         data_dir = ''
+    
     try:
-        chunk_id = get_block_chunk(experiment_id, data_dir) if is_mea else ''
+        chunk_id = ''
+        if is_mea:
+            # Check that spike sorted outputs exist for this Experiment
+            if os.path.exists(os.path.join(NAS_DATA_DIR, exp_name)):
+                chunk_id = get_block_chunk(experiment_id, data_dir)
     except Exception as e:
         print(f"Error getting chunk_id for {experiment_id}, {data_dir}: {e}")
         chunk_id = ''
+
     base_tuple = {
         'experiment_id': experiment_id,
         'parent_id': parent_id,
@@ -354,7 +375,9 @@ def append_animal(experiment_id: int, parent_id: int, animal: dict, user: str, t
         append_preparation(experiment_id, animal_id, preparation, user, tags, is_mea)
 
 def append_experiment(meta: str, data: str, tags: str, experiment: dict, user: str, tags_dict: dict):
+    exp_name = os.path.basename(data)[:-3]
     base_tuple = {
+        'exp_name': exp_name,
         'meta_file': meta,
         'data_file': data,
         'tags_file': tags,
@@ -370,7 +393,7 @@ def append_experiment(meta: str, data: str, tags: str, experiment: dict, user: s
     experiment_id = max_id(Experiment)
     if experiment['rig_type'] == 'MEA':
         try:
-            append_experiment_analysis(experiment_id, data)
+            append_experiment_analysis(experiment_id, exp_name)
         except Exception as e:
             print(f"Error adding analysis for experiment {experiment_id}: {e}")
     tags_dict = append_tags(experiment['uuid'], experiment_id, 'experiment', experiment_id, None, tags_dict)
@@ -382,6 +405,7 @@ def append_experiment(meta: str, data: str, tags: str, experiment: dict, user: s
 # If there are files to parse, throws error for now.
 def parse_data(source: str, dest: str):
     if source.endswith('.h5'):
+        print(f'Need to convert {source} to json')
         print("going to implement this eventually")
 
 def gen_tags(file_to_create: str, dir: str):
@@ -408,6 +432,8 @@ def gen_meta_list(data_dir: str, meta_dir: str, tags_dir: str) -> list:
                     meta_file = os.path.join(meta_dir, item[:-3] + '.json')
                     if not os.path.exists(meta_file):
                         parse_data(full_path, meta_dir)
+                        # As parse_data is not implemented, we will skip this file for now.
+                        continue
                     # check for tags
                     tags_file = os.path.join(tags_dir, item[:-3] + '.json')
                     if not os.path.exists(tags_file):
@@ -438,10 +464,12 @@ def append_data(data_dir: str, meta_dir: str, tags_dir: str, username: str, db_p
     meta_list = gen_meta_list(data_dir, meta_dir, tags_dir)
     records_added = 0
     for meta, data, tags in tqdm(meta_list):
-        print("Adding", meta, flush=True)
         # check if meta already in database
         if len(Experiment & f'meta_file="{meta}"') == 1:
+            print(f"Already in database: {meta}")
             continue
+        
+        print("Adding", meta, flush=True)
         # not in database, add to database
         with open(meta, 'r') as f:
             meta_dict = json.load(f)
