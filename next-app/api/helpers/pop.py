@@ -439,6 +439,7 @@ def gen_meta_list(data_dir: str, meta_dir: str, tags_dir: str) -> list:
                     if not os.path.exists(tags_file):
                         gen_tags(item[:-3] + '.json', tags_dir)
                     meta_list.append([meta_file, full_path, tags_file])
+    
     # that should be all of the single cell. Now for MEA, we want to find dir in NAS_DATA_DIR
     for item in os.listdir(meta_dir):
         if item.endswith('.json') and item[:-5] + '.h5' not in os.listdir(data_dir):
@@ -446,6 +447,12 @@ def gen_meta_list(data_dir: str, meta_dir: str, tags_dir: str) -> list:
             tags_file = os.path.join(tags_dir, item[:-5] + '.json')
             if not os.path.exists(tags_file):
                 gen_tags(item[:-5] + '.json', tags_dir)
+            # Check that NAS directory exists
+            if not os.path.exists(NAS_DATA_DIR):
+                print(f"Could not find NAS_DATA_DIR: {NAS_DATA_DIR}")
+                print('Make sure you are connected and that api/helpers/utils.py has the correct path.')
+                continue
+            
             # find the right directory in NAS_DATA_DIR
             if item[:-5] not in os.listdir(NAS_DATA_DIR):
                 print(f"Could not find data directory for {item}")
