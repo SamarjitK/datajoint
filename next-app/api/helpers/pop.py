@@ -150,7 +150,8 @@ def append_experiment_analysis(experiment_id: int, exp_name: str):
 
 # given a data directory (ending in dataXXX) and the experiment id, find the correct chunk ID.
 def get_block_chunk(experiment_id: int, data_dir: str) -> int:
-    data_index = data_dir.split("/")[1]
+    # data_index = data_dir.split("/")[1]
+    data_index = os.path.basename(data_dir)
     possible_chunks = (SortingChunk & f"experiment_id={experiment_id}").fetch()['chunk_name']
     exp_name = (Experiment & f"id={experiment_id}").fetch1('exp_name')
     # exp_name = os.path.basename(exp_name)[:-3]
